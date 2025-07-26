@@ -1,7 +1,7 @@
 use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui_extras::DatePickerButton;
-use egui_plot::Plot;
+use egui_plot::{Plot, Points, MarkerShape};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -14,8 +14,8 @@ mod analysis;
 use analysis::{BasicStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
-    OneRmFormula, XAxis, YAxis, estimated_1rm_line, sets_per_day_bar, training_volume_line,
-    unique_exercises, weight_over_time_line,
+    OneRmFormula, XAxis, YAxis, estimated_1rm_line, sets_per_day_bar,
+    training_volume_line, unique_exercises, weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -94,6 +94,7 @@ struct Settings {
     show_est_1rm: bool,
     show_sets: bool,
     show_volume: bool,
+    highlight_max: bool,
     weight_unit: WeightUnit,
     one_rm_formula: OneRmFormula,
     start_date: Option<NaiveDate>,
@@ -139,6 +140,7 @@ impl Default for Settings {
             show_est_1rm: true,
             show_sets: true,
             show_volume: false,
+            highlight_max: true,
             weight_unit: WeightUnit::Lbs,
             one_rm_formula: OneRmFormula::Epley,
             start_date: None,
@@ -479,7 +481,7 @@ impl App for MyApp {
                 if let Some(ref ex) = self.selected_exercise {
                     let plot_resp = Plot::new("exercise_plot").show(ui, |plot_ui| {
                         if self.settings.show_weight {
-                            plot_ui.line(weight_over_time_line(
+                            let lw = weight_over_time_line(
                                 &self.workouts,
                                 ex,
                                 self.settings.start_date,
@@ -487,10 +489,21 @@ impl App for MyApp {
                                 self.settings.x_axis,
                                 self.settings.y_axis,
                                 self.settings.weight_unit,
-                            ));
+                            );
+                            plot_ui.line(lw.line);
+                            if self.settings.highlight_max {
+                                if let Some(p) = lw.max_point {
+                                    plot_ui.points(
+                                        Points::new(vec![p])
+                                            .shape(MarkerShape::Diamond)
+                                            .color(egui::Color32::RED)
+                                            .name("Max Weight"),
+                                    );
+                                }
+                            }
                         }
                         if self.settings.show_est_1rm {
-                            plot_ui.line(estimated_1rm_line(
+                            let lr = estimated_1rm_line(
                                 &self.workouts,
                                 ex,
                                 self.settings.one_rm_formula,
@@ -498,7 +511,18 @@ impl App for MyApp {
                                 self.settings.end_date,
                                 self.settings.x_axis,
                                 self.settings.weight_unit,
-                            ));
+                            );
+                            plot_ui.line(lr.line);
+                            if self.settings.highlight_max {
+                                if let Some(p) = lr.max_point {
+                                    plot_ui.points(
+                                        Points::new(vec![p])
+                                            .shape(MarkerShape::Circle)
+                                            .color(egui::Color32::BLUE)
+                                            .name("Max 1RM"),
+                                    );
+                                }
+                            }
                         }
                         if self.settings.show_volume {
                             plot_ui.line(training_volume_line(
@@ -668,6 +692,12 @@ impl App for MyApp {
                     }
                     if ui
                         .checkbox(&mut self.settings.show_volume, "Show Training Volume")
+                        .changed()
+                    {
+                        self.settings_dirty = true;
+                    }
+                    if ui
+                        .checkbox(&mut self.settings.highlight_max, "Highlight maximums")
                         .changed()
                     {
                         self.settings_dirty = true;
