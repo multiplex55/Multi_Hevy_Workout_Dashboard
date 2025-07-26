@@ -11,7 +11,8 @@ mod analysis;
 use analysis::{BasicStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
-    OneRmFormula, estimated_1rm_line, sets_per_day_bar, unique_exercises, weight_over_time_line,
+    OneRmFormula, estimated_1rm_line, sets_per_day_bar, training_volume_line, unique_exercises,
+    weight_over_time_line,
 };
 
 #[derive(Debug, Deserialize, Clone)]
@@ -27,6 +28,7 @@ struct Settings {
     show_weight: bool,
     show_est_1rm: bool,
     show_sets: bool,
+    show_volume: bool,
     one_rm_formula: OneRmFormula,
 }
 
@@ -36,6 +38,7 @@ impl Default for Settings {
             show_weight: true,
             show_est_1rm: true,
             show_sets: true,
+            show_volume: false,
             one_rm_formula: OneRmFormula::Epley,
         }
     }
@@ -98,6 +101,7 @@ impl App for MyApp {
                 ui.label("• Weight over time");
                 ui.label("• Estimated 1RM");
                 ui.label("• Sets per day");
+                ui.label("• Training volume");
             });
         });
 
@@ -176,6 +180,9 @@ impl App for MyApp {
                                 self.settings.one_rm_formula,
                             ));
                         }
+                        if self.settings.show_volume {
+                            plot_ui.line(training_volume_line(&self.workouts));
+                        }
                         if self.settings.show_sets {
                             plot_ui.bar_chart(sets_per_day_bar(&self.workouts, Some(ex)));
                         }
@@ -196,6 +203,7 @@ impl App for MyApp {
                     ui.checkbox(&mut self.settings.show_weight, "Show Weight over time");
                     ui.checkbox(&mut self.settings.show_est_1rm, "Show Estimated 1RM");
                     ui.checkbox(&mut self.settings.show_sets, "Show Sets per day");
+                    ui.checkbox(&mut self.settings.show_volume, "Show Training Volume");
                     ui.horizontal(|ui| {
                         ui.label("1RM Formula:");
                         egui::ComboBox::from_id_source("rm_formula_setting")

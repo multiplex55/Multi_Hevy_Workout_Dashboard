@@ -73,6 +73,25 @@ pub fn sets_per_day_bar(entries: &[WorkoutEntry], exercise: Option<&str>) -> Bar
     BarChart::new(bars).name("Sets")
 }
 
+/// Calculate total training volume (weight * reps) per workout date.
+fn training_volume_points(entries: &[WorkoutEntry]) -> Vec<[f64; 2]> {
+    let mut map: std::collections::BTreeMap<NaiveDate, f64> = std::collections::BTreeMap::new();
+    for e in entries {
+        if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+            *map.entry(d).or_insert(0.0) += e.weight as f64 * e.reps as f64;
+        }
+    }
+    map.into_iter()
+        .map(|(d, vol)| [d.num_days_from_ce() as f64, vol])
+        .collect()
+}
+
+/// Create a line plot of training volume per day.
+pub fn training_volume_line(entries: &[WorkoutEntry]) -> Line {
+    let points = training_volume_points(entries);
+    Line::new(PlotPoints::from(points)).name("Volume")
+}
+
 /// Return a sorted list of unique exercises found in the data.
 pub fn unique_exercises(entries: &[WorkoutEntry]) -> Vec<String> {
     let mut set = std::collections::BTreeSet::new();
@@ -80,4 +99,44 @@ pub fn unique_exercises(entries: &[WorkoutEntry]) -> Vec<String> {
         set.insert(e.exercise.clone());
     }
     set.into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_entries() -> Vec<WorkoutEntry> {
+        vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Squat".into(),
+                weight: 100.0,
+                reps: 5,
+            },
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 80.0,
+                reps: 5,
+            },
+            WorkoutEntry {
+                date: "2024-01-03".into(),
+                exercise: "Squat".into(),
+                weight: 105.0,
+                reps: 5,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_training_volume_points() {
+        let points = training_volume_points(&sample_entries());
+        let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
+        let expected = vec![
+            [d1.num_days_from_ce() as f64, 900.0],
+            [d3.num_days_from_ce() as f64, 525.0],
+        ];
+        assert_eq!(points, expected);
+    }
 }
