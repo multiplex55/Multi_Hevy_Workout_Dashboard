@@ -2,9 +2,10 @@ use chrono::{Datelike, NaiveDate};
 use egui_plot::{Bar, BarChart, Line, PlotPoints};
 
 use crate::WorkoutEntry;
+use serde::{Deserialize, Serialize};
 
 /// Available formulas for estimating a one-rep max.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OneRmFormula {
     /// Epley formula: `weight * (1 + reps / 30)`.
     Epley,
