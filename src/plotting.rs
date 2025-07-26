@@ -14,6 +14,9 @@ pub enum OneRmFormula {
 }
 
 /// Generate a line plot of weight over time for a given exercise.
+///
+/// Only entries for `exercise` within the optional date range are used. Invalid
+/// dates are ignored.
 pub fn weight_over_time_line(
     entries: &[WorkoutEntry],
     exercise: &str,
@@ -33,11 +36,12 @@ pub fn weight_over_time_line(
     Line::new(PlotPoints::from(points)).name("Weight")
 }
 
-/// Generate a line plot of estimated 1RM over time for a given exercise.
+/// Generate a line plot of the estimated one-rep max over time for a given
+/// exercise.
 ///
-/// * `entries` - All workout entries loaded from the CSV.
-/// * `exercise` - Name of the exercise to plot.
-/// * `formula` - The one-rep max estimation formula to use.
+/// The estimation is performed for each set using the supplied
+/// [`OneRmFormula`]. Only sets for `exercise` within the optional date range are
+/// included.
 pub fn estimated_1rm_line(
     entries: &[WorkoutEntry],
     exercise: &str,
@@ -69,7 +73,10 @@ pub fn estimated_1rm_line(
     Line::new(PlotPoints::from(points)).name("1RM Est")
 }
 
-/// Create a bar chart of sets per day for an optional exercise.
+/// Create a bar chart of how many sets were performed on each day.
+///
+/// When `exercise` is `Some`, only sets of that exercise are counted. Entries
+/// outside of the optional date range or with invalid dates are skipped.
 pub fn sets_per_day_bar(
     entries: &[WorkoutEntry],
     exercise: Option<&str>,
@@ -113,7 +120,10 @@ fn training_volume_points(
         .collect()
 }
 
-/// Create a line plot of training volume per day.
+/// Create a line plot of total training volume per day.
+///
+/// Training volume is calculated as `weight * reps` for each set. Only entries
+/// within the optional date range are considered.
 pub fn training_volume_line(
     entries: &[WorkoutEntry],
     start: Option<NaiveDate>,
@@ -124,6 +134,9 @@ pub fn training_volume_line(
 }
 
 /// Return a sorted list of unique exercises found in the data.
+///
+/// Only entries whose dates fall inside the optional range are inspected. The
+/// resulting vector is sorted alphabetically.
 pub fn unique_exercises(
     entries: &[WorkoutEntry],
     start: Option<NaiveDate>,
