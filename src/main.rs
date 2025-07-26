@@ -49,6 +49,21 @@ struct RawWorkoutRow {
     rpe: Option<f32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WeightUnit {
+    Lbs,
+    Kg,
+}
+
+impl WeightUnit {
+    fn factor(self) -> f32 {
+        match self {
+            WeightUnit::Lbs => 1.0,
+            WeightUnit::Kg => 0.453_592,
+        }
+    }
+}
+
 fn parse_workout_csv<R: std::io::Read>(reader: R) -> Result<Vec<WorkoutEntry>, csv::Error> {
     let mut rdr = csv::Reader::from_reader(reader);
     let mut entries = Vec::new();
@@ -79,6 +94,7 @@ struct Settings {
     show_est_1rm: bool,
     show_sets: bool,
     show_volume: bool,
+    weight_unit: WeightUnit,
     one_rm_formula: OneRmFormula,
     start_date: Option<NaiveDate>,
     end_date: Option<NaiveDate>,
@@ -123,6 +139,7 @@ impl Default for Settings {
             show_est_1rm: true,
             show_sets: true,
             show_volume: false,
+            weight_unit: WeightUnit::Lbs,
             one_rm_formula: OneRmFormula::Epley,
             start_date: None,
             end_date: None,
@@ -357,9 +374,10 @@ impl App for MyApp {
                                     ui.label(ex);
                                     ui.label(s.total_sets.to_string());
                                     ui.label(s.total_reps.to_string());
-                                    ui.label(format!("{:.1}", s.total_volume));
+                                    let f = self.settings.weight_unit.factor();
+                                    ui.label(format!("{:.1}", s.total_volume * f));
                                     if let Some(b) = s.best_est_1rm {
-                                        ui.label(format!("{:.1}", b));
+                                        ui.label(format!("{:.1}", b * f));
                                     } else {
                                         ui.label("-");
                                     }
@@ -468,6 +486,7 @@ impl App for MyApp {
                                 self.settings.end_date,
                                 self.settings.x_axis,
                                 self.settings.y_axis,
+                                self.settings.weight_unit,
                             ));
                         }
                         if self.settings.show_est_1rm {
@@ -478,6 +497,7 @@ impl App for MyApp {
                                 self.settings.start_date,
                                 self.settings.end_date,
                                 self.settings.x_axis,
+                                self.settings.weight_unit,
                             ));
                         }
                         if self.settings.show_volume {
@@ -487,6 +507,7 @@ impl App for MyApp {
                                 self.settings.end_date,
                                 self.settings.x_axis,
                                 self.settings.y_axis,
+                                self.settings.weight_unit,
                             ));
                         }
                         if self.settings.show_sets {
@@ -609,7 +630,8 @@ impl App for MyApp {
                                         ui.label(&e.exercise);
                                     });
                                     row.col(|ui| {
-                                        ui.label(format!("{:.1}", e.weight));
+                                        let f = self.settings.weight_unit.factor();
+                                        ui.label(format!("{:.1}", e.weight * f));
                                     });
                                     row.col(|ui| {
                                         ui.label(e.reps.to_string());
@@ -754,6 +776,30 @@ impl App for MyApp {
                             self.settings_dirty = true;
                         }
                     });
+                    ui.horizontal(|ui| {
+                        ui.label("Weight unit:");
+                        let prev = self.settings.weight_unit;
+                        egui::ComboBox::from_id_source("weight_unit_setting")
+                            .selected_text(match self.settings.weight_unit {
+                                WeightUnit::Lbs => "lbs",
+                                WeightUnit::Kg => "kg",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.settings.weight_unit,
+                                    WeightUnit::Lbs,
+                                    "lbs",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.weight_unit,
+                                    WeightUnit::Kg,
+                                    "kg",
+                                );
+                            });
+                        if prev != self.settings.weight_unit {
+                            self.settings_dirty = true;
+                        }
+                    });
                 });
         }
 
@@ -802,6 +848,7 @@ mod tests {
         s.end_date = Some(NaiveDate::from_ymd_opt(2024, 2, 1).unwrap());
         s.x_axis = XAxis::WorkoutIndex;
         s.y_axis = YAxis::Volume;
+        s.weight_unit = WeightUnit::Kg;
 
         let json = serde_json::to_string(&s).unwrap();
         let loaded: Settings = serde_json::from_str(&json).unwrap();
