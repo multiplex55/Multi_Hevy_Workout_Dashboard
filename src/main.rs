@@ -1,8 +1,9 @@
+use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui_extras::DatePickerButton;
 use egui_plot::Plot;
 use rfd::FileDialog;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::time::{Duration, Instant};
 
@@ -19,7 +20,7 @@ use plotting::{
 mod capture;
 use capture::{crop_image, save_png};
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 struct WorkoutEntry {
     date: String,
     exercise: String,
@@ -27,7 +28,7 @@ struct WorkoutEntry {
     reps: u32,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct Settings {
     show_weight: bool,
     show_est_1rm: bool,
@@ -36,6 +37,36 @@ struct Settings {
     one_rm_formula: OneRmFormula,
     start_date: Option<NaiveDate>,
     end_date: Option<NaiveDate>,
+}
+
+impl Settings {
+    const FILE: &'static str = "multi_hevy_settings.json";
+
+    fn path() -> Option<std::path::PathBuf> {
+        dirs::config_dir().map(|p| p.join(Self::FILE))
+    }
+
+    fn load() -> Self {
+        if let Some(path) = Self::path() {
+            if let Ok(data) = std::fs::read_to_string(&path) {
+                if let Ok(cfg) = serde_json::from_str(&data) {
+                    return cfg;
+                }
+            }
+        }
+        Self::default()
+    }
+
+    fn save(&self) {
+        if let Some(path) = Self::path() {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Ok(data) = serde_json::to_string_pretty(self) {
+                let _ = std::fs::write(path, data);
+            }
+        }
+    }
 }
 
 impl Default for Settings {
@@ -61,6 +92,7 @@ struct MyApp {
     settings: Settings,
     show_settings: bool,
     capture_rect: Option<egui::Rect>,
+    settings_dirty: bool,
 }
 
 impl Default for MyApp {
@@ -71,9 +103,10 @@ impl Default for MyApp {
             selected_exercise: None,
             last_loaded: None,
             toast_start: None,
-            settings: Settings::default(),
+            settings: Settings::load(),
             show_settings: false,
             capture_rect: None,
+            settings_dirty: false,
         }
     }
 }
@@ -302,10 +335,30 @@ impl App for MyApp {
             egui::Window::new("Settings")
                 .open(&mut self.show_settings)
                 .show(ctx, |ui| {
-                    ui.checkbox(&mut self.settings.show_weight, "Show Weight over time");
-                    ui.checkbox(&mut self.settings.show_est_1rm, "Show Estimated 1RM");
-                    ui.checkbox(&mut self.settings.show_sets, "Show Sets per day");
-                    ui.checkbox(&mut self.settings.show_volume, "Show Training Volume");
+                    if ui
+                        .checkbox(&mut self.settings.show_weight, "Show Weight over time")
+                        .changed()
+                    {
+                        self.settings_dirty = true;
+                    }
+                    if ui
+                        .checkbox(&mut self.settings.show_est_1rm, "Show Estimated 1RM")
+                        .changed()
+                    {
+                        self.settings_dirty = true;
+                    }
+                    if ui
+                        .checkbox(&mut self.settings.show_sets, "Show Sets per day")
+                        .changed()
+                    {
+                        self.settings_dirty = true;
+                    }
+                    if ui
+                        .checkbox(&mut self.settings.show_volume, "Show Training Volume")
+                        .changed()
+                    {
+                        self.settings_dirty = true;
+                    }
                     ui.horizontal(|ui| {
                         ui.label("Start date:");
                         let mut start = self
@@ -317,9 +370,11 @@ impl App for MyApp {
                             .changed()
                         {
                             self.settings.start_date = Some(start);
+                            self.settings_dirty = true;
                         }
                         if self.settings.start_date.is_some() && ui.button("Clear").clicked() {
                             self.settings.start_date = None;
+                            self.settings_dirty = true;
                         }
                     });
                     ui.horizontal(|ui| {
@@ -333,13 +388,16 @@ impl App for MyApp {
                             .changed()
                         {
                             self.settings.end_date = Some(end);
+                            self.settings_dirty = true;
                         }
                         if self.settings.end_date.is_some() && ui.button("Clear").clicked() {
                             self.settings.end_date = None;
+                            self.settings_dirty = true;
                         }
                     });
                     ui.horizontal(|ui| {
                         ui.label("1RM Formula:");
+                        let prev = self.settings.one_rm_formula;
                         egui::ComboBox::from_id_source("rm_formula_setting")
                             .selected_text(match self.settings.one_rm_formula {
                                 OneRmFormula::Epley => "Epley",
@@ -357,6 +415,9 @@ impl App for MyApp {
                                     "Brzycki",
                                 );
                             });
+                        if prev != self.settings.one_rm_formula {
+                            self.settings_dirty = true;
+                        }
                     });
                 });
         }
@@ -373,6 +434,11 @@ impl App for MyApp {
                 self.toast_start = None;
             }
         }
+
+        if self.settings_dirty {
+            self.settings.save();
+            self.settings_dirty = false;
+        }
     }
 }
 
@@ -384,4 +450,24 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|_cc| Box::new(MyApp::default())),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_roundtrip() {
+        let mut s = Settings::default();
+        s.show_weight = false;
+        s.show_est_1rm = false;
+        s.show_sets = false;
+        s.one_rm_formula = OneRmFormula::Brzycki;
+        s.start_date = Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        s.end_date = Some(NaiveDate::from_ymd_opt(2024, 2, 1).unwrap());
+
+        let json = serde_json::to_string(&s).unwrap();
+        let loaded: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(s, loaded);
+    }
 }
