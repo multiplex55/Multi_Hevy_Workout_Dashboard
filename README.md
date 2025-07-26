@@ -47,5 +47,8 @@ the workout date, exercise name, weight and reps.
   * Weight over time
   * Estimated one‑rep max over time
   * Sets per day (bar chart)
+* **Raw Entry Table** – Open *Raw Entries* from the **File** menu to see every
+  workout set in a sortable table. Columns can be sorted and the table respects
+  the date range from the settings as well as an exercise filter.
 
 Use the drop‑down at the top of the window to change the exercise displayed in the plots. Open the **Settings** window from the **File** menu to choose whether each plot is shown and select the formula (Epley or Brzycki) used for estimating 1RM.

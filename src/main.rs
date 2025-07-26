@@ -130,15 +130,27 @@ impl Default for Settings {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SortColumn {
+    Date,
+    Exercise,
+    Weight,
+    Reps,
+}
+
 struct MyApp {
     workouts: Vec<WorkoutEntry>,
     stats: BasicStats,
     selected_exercise: Option<String>,
     search_query: String,
+    table_filter: String,
     last_loaded: Option<String>,
     toast_start: Option<Instant>,
     settings: Settings,
     show_settings: bool,
+    show_entries: bool,
+    sort_column: SortColumn,
+    sort_ascending: bool,
     capture_rect: Option<egui::Rect>,
     settings_dirty: bool,
 }
@@ -150,12 +162,44 @@ impl Default for MyApp {
             stats: BasicStats::default(),
             selected_exercise: None,
             search_query: String::new(),
+            table_filter: String::new(),
             last_loaded: None,
             toast_start: None,
             settings: Settings::load(),
             show_settings: false,
+            show_entries: false,
+            sort_column: SortColumn::Date,
+            sort_ascending: true,
             capture_rect: None,
             settings_dirty: false,
+        }
+    }
+}
+
+impl MyApp {
+    fn sort_button(
+        ui: &mut egui::Ui,
+        label: &str,
+        column: SortColumn,
+        sort_column: &mut SortColumn,
+        sort_ascending: &mut bool,
+    ) {
+        let arrow = if *sort_column == column {
+            if *sort_ascending {
+                " \u{25B2}"
+            } else {
+                " \u{25BC}"
+            }
+        } else {
+            ""
+        };
+        if ui.button(format!("{label}{arrow}")).clicked() {
+            if *sort_column == column {
+                *sort_ascending = !*sort_ascending;
+            } else {
+                *sort_column = column;
+                *sort_ascending = true;
+            }
         }
     }
 }
@@ -189,6 +233,10 @@ impl App for MyApp {
                 ui.menu_button("File", |ui| {
                     if ui.button("Settings").clicked() {
                         self.show_settings = true;
+                        ui.close_menu();
+                    }
+                    if ui.button("Raw Entries").clicked() {
+                        self.show_entries = true;
                         ui.close_menu();
                     }
                 });
@@ -396,13 +444,122 @@ impl App for MyApp {
                 }
             }
 
-            ui.heading("Loaded Workouts");
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for entry in &self.workouts {
-                    ui.label(format!("{:?}", entry));
-                }
-            });
+            ui.heading("Workout Entries");
+            if ui.button("Open Table").clicked() {
+                self.show_entries = true;
+            }
         });
+
+        if self.show_entries {
+            egui::Window::new("Workout Entries")
+                .open(&mut self.show_entries)
+                .vscroll(true)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Filter exercise:");
+                        ui.text_edit_singleline(&mut self.table_filter);
+                    });
+                    let mut entries: Vec<&WorkoutEntry> = self.workouts.iter().collect();
+                    if !self.table_filter.is_empty() {
+                        let q = self.table_filter.to_lowercase();
+                        entries.retain(|e| e.exercise.to_lowercase().contains(&q));
+                    }
+                    if let Some(start) = self.settings.start_date {
+                        entries.retain(|e| {
+                            NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
+                                .map(|d| d >= start)
+                                .unwrap_or(false)
+                        });
+                    }
+                    if let Some(end) = self.settings.end_date {
+                        entries.retain(|e| {
+                            NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
+                                .map(|d| d <= end)
+                                .unwrap_or(false)
+                        });
+                    }
+                    entries.sort_by(|a, b| match self.sort_column {
+                        SortColumn::Date => a.date.cmp(&b.date),
+                        SortColumn::Exercise => a.exercise.cmp(&b.exercise),
+                        SortColumn::Weight => a
+                            .weight
+                            .partial_cmp(&b.weight)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        SortColumn::Reps => a.reps.cmp(&b.reps),
+                    });
+                    if !self.sort_ascending {
+                        entries.reverse();
+                    }
+                    let row_height = ui.text_style_height(&egui::TextStyle::Body);
+                    let mut sort_column = self.sort_column;
+                    let mut sort_ascending = self.sort_ascending;
+                    egui_extras::TableBuilder::new(ui)
+                        .striped(true)
+                        .resizable(true)
+                        .column(egui_extras::Column::auto())
+                        .column(egui_extras::Column::auto())
+                        .column(egui_extras::Column::auto())
+                        .column(egui_extras::Column::auto())
+                        .header(row_height, |mut header| {
+                            header.col(|ui| {
+                                MyApp::sort_button(
+                                    ui,
+                                    "Date",
+                                    SortColumn::Date,
+                                    &mut sort_column,
+                                    &mut sort_ascending,
+                                )
+                            });
+                            header.col(|ui| {
+                                MyApp::sort_button(
+                                    ui,
+                                    "Exercise",
+                                    SortColumn::Exercise,
+                                    &mut sort_column,
+                                    &mut sort_ascending,
+                                );
+                            });
+                            header.col(|ui| {
+                                MyApp::sort_button(
+                                    ui,
+                                    "Weight",
+                                    SortColumn::Weight,
+                                    &mut sort_column,
+                                    &mut sort_ascending,
+                                )
+                            });
+                            header.col(|ui| {
+                                MyApp::sort_button(
+                                    ui,
+                                    "Reps",
+                                    SortColumn::Reps,
+                                    &mut sort_column,
+                                    &mut sort_ascending,
+                                )
+                            });
+                        })
+                        .body(|mut body| {
+                            for e in entries {
+                                body.row(row_height, |mut row| {
+                                    row.col(|ui| {
+                                        ui.label(&e.date);
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(&e.exercise);
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(format!("{:.1}", e.weight));
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(e.reps.to_string());
+                                    });
+                                });
+                            }
+                        });
+                    self.sort_column = sort_column;
+                    self.sort_ascending = sort_ascending;
+                });
+        }
 
         if self.show_settings {
             egui::Window::new("Settings")
@@ -502,7 +659,11 @@ impl App for MyApp {
                             })
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut self.settings.x_axis, XAxis::Date, "Date");
-                                ui.selectable_value(&mut self.settings.x_axis, XAxis::WorkoutIndex, "Workout Index");
+                                ui.selectable_value(
+                                    &mut self.settings.x_axis,
+                                    XAxis::WorkoutIndex,
+                                    "Workout Index",
+                                );
                             });
                         if prev != self.settings.x_axis {
                             self.settings_dirty = true;
@@ -517,8 +678,16 @@ impl App for MyApp {
                                 YAxis::Volume => "Volume",
                             })
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.settings.y_axis, YAxis::Weight, "Weight");
-                                ui.selectable_value(&mut self.settings.y_axis, YAxis::Volume, "Volume");
+                                ui.selectable_value(
+                                    &mut self.settings.y_axis,
+                                    YAxis::Weight,
+                                    "Weight",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.y_axis,
+                                    YAxis::Volume,
+                                    "Volume",
+                                );
                             });
                         if prev != self.settings.y_axis {
                             self.settings_dirty = true;
