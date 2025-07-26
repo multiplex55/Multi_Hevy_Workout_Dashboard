@@ -1,11 +1,13 @@
 use eframe::{App, Frame, NativeOptions, egui};
 use egui_plot::Plot;
+use egui_extras::DatePickerButton;
 use rfd::FileDialog;
 use serde::Deserialize;
 use std::fs::File;
 use std::time::{Duration, Instant};
 
 use log::info;
+use chrono::{NaiveDate, Local};
 
 mod analysis;
 use analysis::{BasicStats, compute_stats, format_load_message};
@@ -30,6 +32,8 @@ struct Settings {
     show_sets: bool,
     show_volume: bool,
     one_rm_formula: OneRmFormula,
+    start_date: Option<NaiveDate>,
+    end_date: Option<NaiveDate>,
 }
 
 impl Default for Settings {
@@ -40,6 +44,8 @@ impl Default for Settings {
             show_sets: true,
             show_volume: false,
             one_rm_formula: OneRmFormula::Epley,
+            start_date: None,
+            end_date: None,
         }
     }
 }
@@ -111,6 +117,8 @@ impl App for MyApp {
                 let mut stats = analysis::aggregate_exercise_stats(
                     &self.workouts,
                     self.settings.one_rm_formula,
+                    self.settings.start_date,
+                    self.settings.end_date,
                 )
                 .into_iter()
                 .collect::<Vec<_>>();
@@ -151,10 +159,20 @@ impl App for MyApp {
                         let mut rdr = csv::Reader::from_reader(file);
                         self.workouts = rdr.deserialize().filter_map(|res| res.ok()).collect();
                         info!("Loaded {} entries from {}", self.workouts.len(), filename);
-                        self.stats = compute_stats(&self.workouts);
+                        self.stats = compute_stats(
+                            &self.workouts,
+                            self.settings.start_date,
+                            self.settings.end_date,
+                        );
                         if self.selected_exercise.is_none() {
                             self.selected_exercise =
-                                unique_exercises(&self.workouts).into_iter().next();
+                                unique_exercises(
+                                    &self.workouts,
+                                    self.settings.start_date,
+                                    self.settings.end_date,
+                                )
+                                .into_iter()
+                                .next();
                         }
                         self.last_loaded = Some(filename);
                         self.toast_start = Some(Instant::now());
@@ -179,7 +197,11 @@ impl App for MyApp {
                 }
                 ui.separator();
 
-                let exercises = unique_exercises(&self.workouts);
+                let exercises = unique_exercises(
+                    &self.workouts,
+                    self.settings.start_date,
+                    self.settings.end_date,
+                );
                 if self.selected_exercise.is_none() {
                     self.selected_exercise = exercises.first().cloned();
                 }
@@ -206,20 +228,36 @@ impl App for MyApp {
                 if let Some(ref ex) = self.selected_exercise {
                     Plot::new("exercise_plot").show(ui, |plot_ui| {
                         if self.settings.show_weight {
-                            plot_ui.line(weight_over_time_line(&self.workouts, ex));
+                            plot_ui.line(weight_over_time_line(
+                                &self.workouts,
+                                ex,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            ));
                         }
                         if self.settings.show_est_1rm {
                             plot_ui.line(estimated_1rm_line(
                                 &self.workouts,
                                 ex,
                                 self.settings.one_rm_formula,
+                                self.settings.start_date,
+                                self.settings.end_date,
                             ));
                         }
                         if self.settings.show_volume {
-                            plot_ui.line(training_volume_line(&self.workouts));
+                            plot_ui.line(training_volume_line(
+                                &self.workouts,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            ));
                         }
                         if self.settings.show_sets {
-                            plot_ui.bar_chart(sets_per_day_bar(&self.workouts, Some(ex)));
+                            plot_ui.bar_chart(sets_per_day_bar(
+                                &self.workouts,
+                                Some(ex),
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            ));
                         }
                     });
                 }
@@ -239,6 +277,38 @@ impl App for MyApp {
                     ui.checkbox(&mut self.settings.show_est_1rm, "Show Estimated 1RM");
                     ui.checkbox(&mut self.settings.show_sets, "Show Sets per day");
                     ui.checkbox(&mut self.settings.show_volume, "Show Training Volume");
+                    ui.horizontal(|ui| {
+                        ui.label("Start date:");
+                        let mut start = self
+                            .settings
+                            .start_date
+                            .unwrap_or_else(|| Local::now().date_naive());
+                        if ui
+                            .add(DatePickerButton::new(&mut start).id_source("start_date"))
+                            .changed()
+                        {
+                            self.settings.start_date = Some(start);
+                        }
+                        if self.settings.start_date.is_some() && ui.button("Clear").clicked() {
+                            self.settings.start_date = None;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("End date:");
+                        let mut end = self
+                            .settings
+                            .end_date
+                            .unwrap_or_else(|| Local::now().date_naive());
+                        if ui
+                            .add(DatePickerButton::new(&mut end).id_source("end_date"))
+                            .changed()
+                        {
+                            self.settings.end_date = Some(end);
+                        }
+                        if self.settings.end_date.is_some() && ui.button("Clear").clicked() {
+                            self.settings.end_date = None;
+                        }
+                    });
                     ui.horizontal(|ui| {
                         ui.label("1RM Formula:");
                         egui::ComboBox::from_id_source("rm_formula_setting")
