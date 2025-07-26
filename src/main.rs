@@ -1,13 +1,13 @@
 use eframe::{App, Frame, NativeOptions, egui};
-use egui_plot::Plot;
 use egui_extras::DatePickerButton;
+use egui_plot::Plot;
 use rfd::FileDialog;
 use serde::Deserialize;
 use std::fs::File;
 use std::time::{Duration, Instant};
 
+use chrono::{Local, NaiveDate};
 use log::info;
-use chrono::{NaiveDate, Local};
 
 mod analysis;
 use analysis::{BasicStats, compute_stats, format_load_message};
@@ -16,6 +16,8 @@ use plotting::{
     OneRmFormula, estimated_1rm_line, sets_per_day_bar, training_volume_line, unique_exercises,
     weight_over_time_line,
 };
+mod capture;
+use capture::{crop_image, save_png};
 
 #[derive(Debug, Deserialize, Clone)]
 struct WorkoutEntry {
@@ -58,6 +60,7 @@ struct MyApp {
     toast_start: Option<Instant>,
     settings: Settings,
     show_settings: bool,
+    capture_rect: Option<egui::Rect>,
 }
 
 impl Default for MyApp {
@@ -70,12 +73,35 @@ impl Default for MyApp {
             toast_start: None,
             settings: Settings::default(),
             show_settings: false,
+            capture_rect: None,
         }
     }
 }
 
 impl App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        // Handle screenshot results
+        let mut shot: Option<std::sync::Arc<egui::ColorImage>> = None;
+        ctx.input_mut(|i| {
+            i.events.retain(|e| {
+                if let egui::Event::Screenshot { image, .. } = e {
+                    shot = Some(image.clone());
+                    false
+                } else {
+                    true
+                }
+            });
+        });
+        if let Some(img) = shot {
+            if let Some(rect) = self.capture_rect.take() {
+                if let Some(path) = FileDialog::new().add_filter("PNG", &["png"]).save_file() {
+                    let cropped = crop_image(&img, rect, ctx.pixels_per_point());
+                    if let Err(err) = save_png(&cropped, &path) {
+                        log::error!("Failed to save plot: {err}");
+                    }
+                }
+            }
+        }
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
@@ -165,14 +191,13 @@ impl App for MyApp {
                             self.settings.end_date,
                         );
                         if self.selected_exercise.is_none() {
-                            self.selected_exercise =
-                                unique_exercises(
-                                    &self.workouts,
-                                    self.settings.start_date,
-                                    self.settings.end_date,
-                                )
-                                .into_iter()
-                                .next();
+                            self.selected_exercise = unique_exercises(
+                                &self.workouts,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            )
+                            .into_iter()
+                            .next();
                         }
                         self.last_loaded = Some(filename);
                         self.toast_start = Some(Instant::now());
@@ -226,7 +251,7 @@ impl App for MyApp {
                 });
 
                 if let Some(ref ex) = self.selected_exercise {
-                    Plot::new("exercise_plot").show(ui, |plot_ui| {
+                    let plot_resp = Plot::new("exercise_plot").show(ui, |plot_ui| {
                         if self.settings.show_weight {
                             plot_ui.line(weight_over_time_line(
                                 &self.workouts,
@@ -260,6 +285,10 @@ impl App for MyApp {
                             ));
                         }
                     });
+                    if ui.button("Save Plot").clicked() {
+                        self.capture_rect = Some(plot_resp.response.rect);
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
+                    }
                 }
             }
 
