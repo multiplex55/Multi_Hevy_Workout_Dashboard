@@ -1,6 +1,6 @@
 // Module for analyzing workout data
 use crate::WorkoutEntry;
-use chrono::{NaiveDate};
+use chrono::NaiveDate;
 use std::collections::HashMap;
 
 #[derive(Debug, Default, PartialEq)]
@@ -75,10 +75,30 @@ mod tests {
 
     fn sample_entries() -> Vec<WorkoutEntry> {
         vec![
-            WorkoutEntry { date: "2024-01-01".into(), exercise: "Squat".into(), weight: 100.0, reps: 5 },
-            WorkoutEntry { date: "2024-01-01".into(), exercise: "Bench".into(), weight: 80.0, reps: 5 },
-            WorkoutEntry { date: "2024-01-03".into(), exercise: "Squat".into(), weight: 105.0, reps: 5 },
-            WorkoutEntry { date: "2024-01-05".into(), exercise: "Deadlift".into(), weight: 120.0, reps: 5 },
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Squat".into(),
+                weight: 100.0,
+                reps: 5,
+            },
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 80.0,
+                reps: 5,
+            },
+            WorkoutEntry {
+                date: "2024-01-03".into(),
+                exercise: "Squat".into(),
+                weight: 105.0,
+                reps: 5,
+            },
+            WorkoutEntry {
+                date: "2024-01-05".into(),
+                exercise: "Deadlift".into(),
+                weight: 120.0,
+                reps: 5,
+            },
         ]
     }
 
@@ -88,7 +108,7 @@ mod tests {
         let stats = compute_stats(&entries);
         assert_eq!(stats.total_workouts, 3);
         // total sets = 4, workouts = 3 -> avg 1.333...
-        assert!((stats.avg_sets_per_workout - 4f32/3f32).abs() < 1e-6);
+        assert!((stats.avg_sets_per_workout - 4f32 / 3f32).abs() < 1e-6);
         assert!((stats.avg_reps_per_set - 5.0).abs() < 1e-6);
         assert!((stats.avg_days_between - 2.0).abs() < 1e-6); // (2 + 2)/2
         assert_eq!(stats.most_common_exercise.as_deref(), Some("Squat"));
