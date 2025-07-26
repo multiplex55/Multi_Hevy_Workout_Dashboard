@@ -4,6 +4,7 @@ use crate::plotting::OneRmFormula;
 use chrono::NaiveDate;
 use std::collections::HashMap;
 
+/// Summary statistics about a workout log.
 #[derive(Debug, Default, PartialEq)]
 pub struct BasicStats {
     pub total_workouts: usize,
@@ -22,7 +23,11 @@ pub struct ExerciseStats {
     pub best_est_1rm: Option<f32>,
 }
 
-/// Return a map from exercise name to aggregated statistics.
+/// Aggregate per-exercise statistics from a slice of workout entries.
+///
+/// The data can be limited to an optional date range. Invalid dates are
+/// skipped. For each exercise all sets are combined and the best estimated
+/// one-rep max is calculated using the provided [`OneRmFormula`].
 pub fn aggregate_exercise_stats(
     entries: &[WorkoutEntry],
     formula: OneRmFormula,
@@ -65,11 +70,18 @@ fn parse_date(date: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()
 }
 
-/// Format the status message shown after loading a CSV file.
+/// Format a user facing message after successfully loading a CSV file.
+///
+/// The returned string includes the number of parsed entries and the file name
+/// and can be used in status bars or log output.
 pub fn format_load_message(entries: usize, filename: &str) -> String {
     format!("Loaded {} entries from {}", entries, filename)
 }
 
+/// Compute overall statistics for the loaded workout entries.
+///
+/// Only entries within the optional `start` and `end` date range are included.
+/// If no valid workout dates are found an empty [`BasicStats`] is returned.
 pub fn compute_stats(
     entries: &[WorkoutEntry],
     start: Option<NaiveDate>,
