@@ -19,6 +19,8 @@ use plotting::{
 };
 mod capture;
 use capture::{crop_image, save_png};
+mod export;
+use export::{save_entries_csv, save_entries_json, save_stats_csv, save_stats_json};
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 struct WorkoutEntry {
@@ -237,6 +239,65 @@ impl App for MyApp {
                     }
                     if ui.button("Raw Entries").clicked() {
                         self.show_entries = true;
+                        ui.close_menu();
+                    }
+                    if ui.button("Export Stats").clicked() {
+                        if let Some(path) = FileDialog::new()
+                            .add_filter("JSON", &["json"])
+                            .add_filter("CSV", &["csv"])
+                            .save_file()
+                        {
+                            let exercises = analysis::aggregate_exercise_stats(
+                                &self.workouts,
+                                self.settings.one_rm_formula,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            )
+                            .into_iter()
+                            .collect::<Vec<_>>();
+                            match path
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .map(|s| s.to_lowercase())
+                            {
+                                Some(ext) if ext == "csv" => {
+                                    if let Err(e) = save_stats_csv(&path, &self.stats, &exercises) {
+                                        log::error!("Failed to export stats: {e}");
+                                    }
+                                }
+                                _ => {
+                                    if let Err(e) = save_stats_json(&path, &self.stats, &exercises)
+                                    {
+                                        log::error!("Failed to export stats: {e}");
+                                    }
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button("Export Entries").clicked() {
+                        if let Some(path) = FileDialog::new()
+                            .add_filter("JSON", &["json"])
+                            .add_filter("CSV", &["csv"])
+                            .save_file()
+                        {
+                            match path
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .map(|s| s.to_lowercase())
+                            {
+                                Some(ext) if ext == "csv" => {
+                                    if let Err(e) = save_entries_csv(&path, &self.workouts) {
+                                        log::error!("Failed to export entries: {e}");
+                                    }
+                                }
+                                _ => {
+                                    if let Err(e) = save_entries_json(&path, &self.workouts) {
+                                        log::error!("Failed to export entries: {e}");
+                                    }
+                                }
+                            }
+                        }
                         ui.close_menu();
                     }
                 });
