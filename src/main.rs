@@ -52,7 +52,9 @@ fn parse_workout_csv<R: std::io::Read>(reader: R) -> Result<Vec<WorkoutEntry>, c
     let mut entries = Vec::new();
     for result in rdr.deserialize::<RawWorkoutRow>() {
         if let Ok(raw) = result {
-            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&raw.start_time, "%d %b %Y, %H:%M") {
+            if let Ok(dt) =
+                chrono::NaiveDateTime::parse_from_str(&raw.start_time, "%d %b %Y, %H:%M")
+            {
                 let date = dt.date().format("%Y-%m-%d").to_string();
                 let weight = raw.weight_lbs.unwrap_or(0.0);
                 let reps = raw.reps.unwrap_or(0);
@@ -187,65 +189,71 @@ impl App for MyApp {
             });
         });
         egui::SidePanel::left("info_panel").show(ctx, |ui| {
-            if self.workouts.is_empty() {
-                ui.label("No CSV loaded");
-                ui.label("Load a CSV to begin");
-            } else {
-                ui.label(format!("Loaded {} entries", self.workouts.len()));
-            }
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                if self.workouts.is_empty() {
+                    ui.label("No CSV loaded");
+                    ui.label("Load a CSV to begin");
+                } else {
+                    ui.label(format!("Loaded {} entries", self.workouts.len()));
+                }
 
-            ui.separator();
-            if let Some(ref ex) = self.selected_exercise {
-                ui.label(format!("Selected exercise: {}", ex));
-            } else {
-                ui.label("No exercise selected");
-                ui.label("Select an exercise from the dropdown");
-            }
+                ui.separator();
+                if let Some(ref ex) = self.selected_exercise {
+                    ui.label(format!("Selected exercise: {}", ex));
+                } else {
+                    ui.label("No exercise selected");
+                    ui.label("Select an exercise from the dropdown");
+                }
 
-            ui.separator();
-            ui.collapsing("Available plots", |ui| {
-                ui.label("• Weight over time");
-                ui.label("• Estimated 1RM");
-                ui.label("• Sets per day");
-                ui.label("• Training volume");
+                ui.separator();
+                ui.collapsing("Available plots", |ui| {
+                    ui.label("• Weight over time");
+                    ui.label("• Estimated 1RM");
+                    ui.label("• Sets per day");
+                    ui.label("• Training volume");
+                });
             });
         });
 
         egui::SidePanel::right("exercise_panel").show(ctx, |ui| {
-            if !self.workouts.is_empty() {
-                ui.heading("Exercise Summary");
-                let mut stats = analysis::aggregate_exercise_stats(
-                    &self.workouts,
-                    self.settings.one_rm_formula,
-                    self.settings.start_date,
-                    self.settings.end_date,
-                )
-                .into_iter()
-                .collect::<Vec<_>>();
-                stats.sort_by_key(|(ex, _)| ex.clone());
-                egui::Grid::new("exercise_summary_grid")
-                    .striped(true)
-                    .show(ui, |ui| {
-                        ui.label("Exercise");
-                        ui.label("Sets");
-                        ui.label("Reps");
-                        ui.label("Volume");
-                        ui.label("Best 1RM");
-                        ui.end_row();
-                        for (ex, s) in stats {
-                            ui.label(ex);
-                            ui.label(s.total_sets.to_string());
-                            ui.label(s.total_reps.to_string());
-                            ui.label(format!("{:.1}", s.total_volume));
-                            if let Some(b) = s.best_est_1rm {
-                                ui.label(format!("{:.1}", b));
-                            } else {
-                                ui.label("-");
-                            }
-                            ui.end_row();
-                        }
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                if !self.workouts.is_empty() {
+                    ui.heading("Exercise Summary");
+                    let mut stats = analysis::aggregate_exercise_stats(
+                        &self.workouts,
+                        self.settings.one_rm_formula,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    )
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                    stats.sort_by_key(|(ex, _)| ex.clone());
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        egui::Grid::new("exercise_summary_grid")
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label("Exercise");
+                                ui.label("Sets");
+                                ui.label("Reps");
+                                ui.label("Volume");
+                                ui.label("Best 1RM");
+                                ui.end_row();
+                                for (ex, s) in stats {
+                                    ui.label(ex);
+                                    ui.label(s.total_sets.to_string());
+                                    ui.label(s.total_reps.to_string());
+                                    ui.label(format!("{:.1}", s.total_volume));
+                                    if let Some(b) = s.best_est_1rm {
+                                        ui.label(format!("{:.1}", b));
+                                    } else {
+                                        ui.label("-");
+                                    }
+                                    ui.end_row();
+                                }
+                            });
                     });
-            }
+                }
+            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -370,9 +378,11 @@ impl App for MyApp {
             }
 
             ui.heading("Loaded Workouts");
-            for entry in &self.workouts {
-                ui.label(format!("{:?}", entry));
-            }
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for entry in &self.workouts {
+                    ui.label(format!("{:?}", entry));
+                }
+            });
         });
 
         if self.show_settings {
