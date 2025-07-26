@@ -5,8 +5,10 @@ use serde::Deserialize;
 use std::fs::File;
 use std::time::{Duration, Instant};
 
+use log::info;
+
 mod analysis;
-use analysis::{BasicStats, compute_stats};
+use analysis::{format_load_message, BasicStats, compute_stats};
 mod plotting;
 use plotting::{estimated_1rm_line, sets_per_day_bar, unique_exercises, weight_over_time_line};
 
@@ -74,6 +76,7 @@ impl App for MyApp {
                     if let Ok(file) = File::open(&path) {
                         let mut rdr = csv::Reader::from_reader(file);
                         self.workouts = rdr.deserialize().filter_map(|res| res.ok()).collect();
+                        info!("Loaded {} entries from {}", self.workouts.len(), filename);
                         self.stats = compute_stats(&self.workouts);
                         if self.selected_exercise.is_none() {
                             self.selected_exercise =
@@ -147,11 +150,7 @@ impl App for MyApp {
                 egui::Area::new(egui::Id::new("load_toast"))
                     .anchor(egui::Align2::RIGHT_TOP, [-10.0, 10.0])
                     .show(ctx, |ui| {
-                        ui.label(format!(
-                            "Loaded {} entries from {}",
-                            self.workouts.len(),
-                            file
-                        ));
+                        ui.label(format_load_message(self.workouts.len(), file));
                     });
             } else {
                 self.toast_start = None;
@@ -161,6 +160,7 @@ impl App for MyApp {
 }
 
 fn main() -> eframe::Result<()> {
+    env_logger::init();
     let options = NativeOptions::default();
     eframe::run_native(
         "Multi Hevy Workout Dashboard",
