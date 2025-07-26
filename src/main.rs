@@ -111,7 +111,7 @@ impl App for MyApp {
 fn main() -> eframe::Result<()> {
     let options = NativeOptions::default();
     eframe::run_native(
-        "Minimal egui App",
+        "Multi Hevy Workout Dashboard",
         options,
         Box::new(|_cc| Box::new(MyApp::default())),
     )
