@@ -1,5 +1,6 @@
 // Module for analyzing workout data
 use crate::WorkoutEntry;
+use crate::plotting::OneRmFormula;
 use chrono::NaiveDate;
 use std::collections::HashMap;
 
@@ -10,6 +11,48 @@ pub struct BasicStats {
     pub avg_reps_per_set: f32,
     pub avg_days_between: f32,
     pub most_common_exercise: Option<String>,
+}
+
+/// Aggregated statistics for a single exercise.
+#[derive(Debug, Default, PartialEq)]
+pub struct ExerciseStats {
+    pub total_sets: usize,
+    pub total_reps: u32,
+    pub total_volume: f32,
+    pub best_est_1rm: Option<f32>,
+}
+
+/// Return a map from exercise name to aggregated statistics.
+pub fn aggregate_exercise_stats(
+    entries: &[WorkoutEntry],
+    formula: OneRmFormula,
+) -> HashMap<String, ExerciseStats> {
+    let mut map: HashMap<String, ExerciseStats> = HashMap::new();
+
+    for e in entries {
+        let stats = map
+            .entry(e.exercise.clone())
+            .or_insert_with(ExerciseStats::default);
+        stats.total_sets += 1;
+        stats.total_reps += e.reps;
+        stats.total_volume += e.weight * e.reps as f32;
+
+        let est = match formula {
+            OneRmFormula::Epley => e.weight * (1.0 + e.reps as f32 / 30.0),
+            OneRmFormula::Brzycki => {
+                if e.reps >= 37 {
+                    continue;
+                }
+                e.weight * 36.0 / (37.0 - e.reps as f32)
+            }
+        };
+        stats.best_est_1rm = match stats.best_est_1rm {
+            Some(current) if current >= est => Some(current),
+            _ => Some(est),
+        };
+    }
+
+    map
 }
 
 fn parse_date(date: &str) -> Option<NaiveDate> {
@@ -154,5 +197,28 @@ mod tests {
     fn test_format_load_message() {
         let msg = format_load_message(10, "workouts.csv");
         assert_eq!(msg, "Loaded 10 entries from workouts.csv");
+    }
+
+    #[test]
+    fn test_aggregate_exercise_stats() {
+        let entries = sample_entries();
+        let map = aggregate_exercise_stats(&entries, OneRmFormula::Epley);
+
+        let squat = map.get("Squat").unwrap();
+        assert_eq!(squat.total_sets, 2);
+        assert_eq!(squat.total_reps, 10);
+        assert!((squat.total_volume - 1025.0).abs() < 1e-6);
+        assert!((squat.best_est_1rm.unwrap() - 122.5).abs() < 1e-3);
+
+        let bench = map.get("Bench").unwrap();
+        assert_eq!(bench.total_sets, 1);
+        assert_eq!(bench.total_reps, 5);
+        assert!((bench.total_volume - 400.0).abs() < 1e-6);
+        assert!((bench.best_est_1rm.unwrap() - 93.3333).abs() < 1e-3);
+
+        let deadlift = map.get("Deadlift").unwrap();
+        assert_eq!(deadlift.total_sets, 1);
+        assert_eq!(deadlift.total_reps, 5);
+        assert!((deadlift.total_volume - 600.0).abs() < 1e-6);
     }
 }

@@ -105,6 +105,41 @@ impl App for MyApp {
             });
         });
 
+        egui::SidePanel::right("exercise_panel").show(ctx, |ui| {
+            if !self.workouts.is_empty() {
+                ui.heading("Exercise Summary");
+                let mut stats = analysis::aggregate_exercise_stats(
+                    &self.workouts,
+                    self.settings.one_rm_formula,
+                )
+                .into_iter()
+                .collect::<Vec<_>>();
+                stats.sort_by_key(|(ex, _)| ex.clone());
+                egui::Grid::new("exercise_summary_grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.label("Exercise");
+                        ui.label("Sets");
+                        ui.label("Reps");
+                        ui.label("Volume");
+                        ui.label("Best 1RM");
+                        ui.end_row();
+                        for (ex, s) in stats {
+                            ui.label(ex);
+                            ui.label(s.total_sets.to_string());
+                            ui.label(s.total_reps.to_string());
+                            ui.label(format!("{:.1}", s.total_volume));
+                            if let Some(b) = s.best_est_1rm {
+                                ui.label(format!("{:.1}", b));
+                            } else {
+                                ui.label("-");
+                            }
+                            ui.end_row();
+                        }
+                    });
+            }
+        });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Load CSV").clicked() {
                 if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).pick_file() {
