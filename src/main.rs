@@ -3,6 +3,7 @@ use egui_plot::Plot;
 use rfd::FileDialog;
 use serde::Deserialize;
 use std::fs::File;
+use std::time::{Duration, Instant};
 
 mod analysis;
 use analysis::{BasicStats, compute_stats};
@@ -21,6 +22,8 @@ struct MyApp {
     workouts: Vec<WorkoutEntry>,
     stats: BasicStats,
     selected_exercise: Option<String>,
+    last_loaded: Option<String>,
+    toast_start: Option<Instant>,
 }
 
 impl Default for MyApp {
@@ -29,6 +32,8 @@ impl Default for MyApp {
             workouts: Vec::new(),
             stats: BasicStats::default(),
             selected_exercise: None,
+            last_loaded: None,
+            toast_start: None,
         }
     }
 }
@@ -38,7 +43,11 @@ impl App for MyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Load CSV").clicked() {
                 if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).pick_file() {
-                    if let Ok(file) = File::open(path) {
+                    let filename = path
+                        .file_name()
+                        .map(|f| f.to_string_lossy().to_string())
+                        .unwrap_or_else(|| path.display().to_string());
+                    if let Ok(file) = File::open(&path) {
                         let mut rdr = csv::Reader::from_reader(file);
                         self.workouts = rdr.deserialize().filter_map(|res| res.ok()).collect();
                         self.stats = compute_stats(&self.workouts);
@@ -46,6 +55,8 @@ impl App for MyApp {
                             self.selected_exercise =
                                 unique_exercises(&self.workouts).into_iter().next();
                         }
+                        self.last_loaded = Some(filename);
+                        self.toast_start = Some(Instant::now());
                     }
                 }
             }
@@ -105,6 +116,23 @@ impl App for MyApp {
                 ui.label(format!("{:?}", entry));
             }
         });
+
+        if let Some(start) = self.toast_start {
+            if start.elapsed() < Duration::from_secs(3) {
+                let file = self.last_loaded.as_deref().unwrap_or("file");
+                egui::Area::new(egui::Id::new("load_toast"))
+                    .anchor(egui::Align2::RIGHT_TOP, [-10.0, 10.0])
+                    .show(ctx, |ui| {
+                        ui.label(format!(
+                            "Loaded {} entries from {}",
+                            self.workouts.len(),
+                            file
+                        ));
+                    });
+            } else {
+                self.toast_start = None;
+            }
+        }
     }
 }
 
