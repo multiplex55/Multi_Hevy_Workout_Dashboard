@@ -14,8 +14,8 @@ mod analysis;
 use analysis::{BasicStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
-    OneRmFormula, estimated_1rm_line, sets_per_day_bar, training_volume_line, unique_exercises,
-    weight_over_time_line,
+    OneRmFormula, XAxis, YAxis, estimated_1rm_line, sets_per_day_bar, training_volume_line,
+    unique_exercises, weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -80,6 +80,8 @@ struct Settings {
     one_rm_formula: OneRmFormula,
     start_date: Option<NaiveDate>,
     end_date: Option<NaiveDate>,
+    x_axis: XAxis,
+    y_axis: YAxis,
 }
 
 impl Settings {
@@ -122,6 +124,8 @@ impl Default for Settings {
             one_rm_formula: OneRmFormula::Epley,
             start_date: None,
             end_date: None,
+            x_axis: XAxis::Date,
+            y_axis: YAxis::Weight,
         }
     }
 }
@@ -353,6 +357,8 @@ impl App for MyApp {
                                 ex,
                                 self.settings.start_date,
                                 self.settings.end_date,
+                                self.settings.x_axis,
+                                self.settings.y_axis,
                             ));
                         }
                         if self.settings.show_est_1rm {
@@ -362,6 +368,7 @@ impl App for MyApp {
                                 self.settings.one_rm_formula,
                                 self.settings.start_date,
                                 self.settings.end_date,
+                                self.settings.x_axis,
                             ));
                         }
                         if self.settings.show_volume {
@@ -369,6 +376,8 @@ impl App for MyApp {
                                 &self.workouts,
                                 self.settings.start_date,
                                 self.settings.end_date,
+                                self.settings.x_axis,
+                                self.settings.y_axis,
                             ));
                         }
                         if self.settings.show_sets {
@@ -483,6 +492,38 @@ impl App for MyApp {
                             self.settings_dirty = true;
                         }
                     });
+                    ui.horizontal(|ui| {
+                        ui.label("X Axis:");
+                        let prev = self.settings.x_axis;
+                        egui::ComboBox::from_id_source("x_axis_setting")
+                            .selected_text(match self.settings.x_axis {
+                                XAxis::Date => "Date",
+                                XAxis::WorkoutIndex => "Workout Index",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.settings.x_axis, XAxis::Date, "Date");
+                                ui.selectable_value(&mut self.settings.x_axis, XAxis::WorkoutIndex, "Workout Index");
+                            });
+                        if prev != self.settings.x_axis {
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Y Axis:");
+                        let prev = self.settings.y_axis;
+                        egui::ComboBox::from_id_source("y_axis_setting")
+                            .selected_text(match self.settings.y_axis {
+                                YAxis::Weight => "Weight",
+                                YAxis::Volume => "Volume",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.settings.y_axis, YAxis::Weight, "Weight");
+                                ui.selectable_value(&mut self.settings.y_axis, YAxis::Volume, "Volume");
+                            });
+                        if prev != self.settings.y_axis {
+                            self.settings_dirty = true;
+                        }
+                    });
                 });
         }
 
@@ -529,6 +570,8 @@ mod tests {
         s.one_rm_formula = OneRmFormula::Brzycki;
         s.start_date = Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
         s.end_date = Some(NaiveDate::from_ymd_opt(2024, 2, 1).unwrap());
+        s.x_axis = XAxis::WorkoutIndex;
+        s.y_axis = YAxis::Volume;
 
         let json = serde_json::to_string(&s).unwrap();
         let loaded: Settings = serde_json::from_str(&json).unwrap();

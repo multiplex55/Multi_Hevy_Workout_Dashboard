@@ -13,6 +13,24 @@ pub enum OneRmFormula {
     Brzycki,
 }
 
+/// Options for mapping data to the x-axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum XAxis {
+    /// Use the workout date as the x value.
+    Date,
+    /// Use the position of the set in the filtered list.
+    WorkoutIndex,
+}
+
+/// Options for mapping data to the y-axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum YAxis {
+    /// Plot the set weight.
+    Weight,
+    /// Plot the calculated training volume (weight * reps).
+    Volume,
+}
+
 /// Generate a line plot of weight over time for a given exercise.
 ///
 /// Only entries for `exercise` within the optional date range are used. Invalid
@@ -22,17 +40,27 @@ pub fn weight_over_time_line(
     exercise: &str,
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
+    x_axis: XAxis,
+    y_axis: YAxis,
 ) -> Line {
-    let points: Vec<[f64; 2]> = entries
-        .iter()
-        .filter(|e| e.exercise == exercise)
-        .filter_map(|e| {
-            NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
-                .ok()
-                .filter(|d| start.map_or(true, |s| *d >= s) && end.map_or(true, |e2| *d <= e2))
-                .map(|d| [d.num_days_from_ce() as f64, e.weight as f64])
-        })
-        .collect();
+    let mut points = Vec::new();
+    let mut idx = 0usize;
+    for e in entries.iter().filter(|e| e.exercise == exercise) {
+        if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let x = match x_axis {
+                    XAxis::Date => d.num_days_from_ce() as f64,
+                    XAxis::WorkoutIndex => idx as f64,
+                };
+                let y = match y_axis {
+                    YAxis::Weight => e.weight as f64,
+                    YAxis::Volume => e.weight as f64 * e.reps as f64,
+                };
+                points.push([x, y]);
+                idx += 1;
+            }
+        }
+    }
     Line::new(PlotPoints::from(points)).name("Weight")
 }
 
@@ -48,28 +76,31 @@ pub fn estimated_1rm_line(
     formula: OneRmFormula,
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
+    x_axis: XAxis,
 ) -> Line {
-    let points: Vec<[f64; 2]> = entries
-        .iter()
-        .filter(|e| e.exercise == exercise)
-        .filter_map(|e| {
-            NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
-                .ok()
-                .filter(|d| start.map_or(true, |s| *d >= s) && end.map_or(true, |e2| *d <= e2))
-                .and_then(|d| {
-                    let est = match formula {
-                        OneRmFormula::Epley => e.weight as f64 * (1.0 + e.reps as f64 / 30.0),
-                        OneRmFormula::Brzycki => {
-                            if e.reps >= 37 {
-                                return None;
-                            }
-                            e.weight as f64 * 36.0 / (37.0 - e.reps as f64)
+    let mut points = Vec::new();
+    let mut idx = 0usize;
+    for e in entries.iter().filter(|e| e.exercise == exercise) {
+        if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let est = match formula {
+                    OneRmFormula::Epley => e.weight as f64 * (1.0 + e.reps as f64 / 30.0),
+                    OneRmFormula::Brzycki => {
+                        if e.reps >= 37 {
+                            continue;
                         }
-                    };
-                    Some([d.num_days_from_ce() as f64, est])
-                })
-        })
-        .collect();
+                        e.weight as f64 * 36.0 / (37.0 - e.reps as f64)
+                    }
+                };
+                let x = match x_axis {
+                    XAxis::Date => d.num_days_from_ce() as f64,
+                    XAxis::WorkoutIndex => idx as f64,
+                };
+                points.push([x, est]);
+                idx += 1;
+            }
+        }
+    }
     Line::new(PlotPoints::from(points)).name("1RM Est")
 }
 
@@ -106,18 +137,35 @@ fn training_volume_points(
     entries: &[WorkoutEntry],
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
+    x_axis: XAxis,
+    y_axis: YAxis,
 ) -> Vec<[f64; 2]> {
-    let mut map: std::collections::BTreeMap<NaiveDate, f64> = std::collections::BTreeMap::new();
+    let mut map: std::collections::BTreeMap<NaiveDate, (f64, f64)> =
+        std::collections::BTreeMap::new();
     for e in entries {
         if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
             if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                *map.entry(d).or_insert(0.0) += e.weight as f64 * e.reps as f64;
+                let entry = map.entry(d).or_insert((0.0, 0.0));
+                entry.0 += e.weight as f64 * e.reps as f64; // volume
+                entry.1 += e.weight as f64; // total weight
             }
         }
     }
-    map.into_iter()
-        .map(|(d, vol)| [d.num_days_from_ce() as f64, vol])
-        .collect()
+    let mut points = Vec::new();
+    let mut idx = 0usize;
+    for (d, (vol, weight)) in map {
+        let x = match x_axis {
+            XAxis::Date => d.num_days_from_ce() as f64,
+            XAxis::WorkoutIndex => idx as f64,
+        };
+        let y = match y_axis {
+            YAxis::Volume => vol,
+            YAxis::Weight => weight,
+        };
+        points.push([x, y]);
+        idx += 1;
+    }
+    points
 }
 
 /// Create a line plot of total training volume per day.
@@ -128,8 +176,10 @@ pub fn training_volume_line(
     entries: &[WorkoutEntry],
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
+    x_axis: XAxis,
+    y_axis: YAxis,
 ) -> Line {
-    let points = training_volume_points(entries, start, end);
+    let points = training_volume_points(entries, start, end, x_axis, y_axis);
     Line::new(PlotPoints::from(points)).name("Volume")
 }
 
@@ -187,7 +237,13 @@ mod tests {
 
     #[test]
     fn test_training_volume_points() {
-        let points = training_volume_points(&sample_entries(), None, None);
+        let points = training_volume_points(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::Date,
+            YAxis::Volume,
+        );
         let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
         let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
         let expected = vec![
@@ -200,7 +256,13 @@ mod tests {
     #[test]
     fn test_training_volume_points_range() {
         let start = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").ok();
-        let points = training_volume_points(&sample_entries(), start, None);
+        let points = training_volume_points(
+            &sample_entries(),
+            start,
+            None,
+            XAxis::Date,
+            YAxis::Volume,
+        );
         let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
         let expected = vec![[d3.num_days_from_ce() as f64, 525.0]];
         assert_eq!(points, expected);
@@ -216,13 +278,48 @@ mod tests {
 
     #[test]
     fn test_training_volume_line() {
-        let line = training_volume_line(&sample_entries(), None, None);
+        let line = training_volume_line(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::Date,
+            YAxis::Volume,
+        );
         let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
         let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
         let expected = vec![
             [d1.num_days_from_ce() as f64, 900.0],
             [d3.num_days_from_ce() as f64, 525.0],
         ];
+        assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_weight_over_time_index_axis() {
+        let d1 = 0.0;
+        let d2 = 1.0;
+        let line = weight_over_time_line(
+            &sample_entries(),
+            "Squat",
+            None,
+            None,
+            XAxis::WorkoutIndex,
+            YAxis::Weight,
+        );
+        let expected = vec![[d1, 100.0], [d2, 105.0]];
+        assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_training_volume_line_index_axis() {
+        let line = training_volume_line(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::WorkoutIndex,
+            YAxis::Volume,
+        );
+        let expected = vec![[0.0, 900.0], [1.0, 525.0]];
         assert_eq!(line_points(line), expected);
     }
 
@@ -249,6 +346,7 @@ mod tests {
             OneRmFormula::Epley,
             None,
             None,
+            XAxis::Date,
         );
         let expected_e = vec![
             [d1.num_days_from_ce() as f64, 100.0 * (1.0 + 5.0 / 30.0)],
@@ -262,6 +360,7 @@ mod tests {
             OneRmFormula::Brzycki,
             Some(d3),
             None,
+            XAxis::Date,
         );
         let expected_b = vec![[d3.num_days_from_ce() as f64, 105.0 * 36.0 / 32.0]];
         assert_eq!(line_points(line_b), expected_b);
