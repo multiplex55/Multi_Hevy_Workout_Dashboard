@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use log::info;
 
 mod analysis;
-use analysis::{format_load_message, BasicStats, compute_stats};
+use analysis::{BasicStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{estimated_1rm_line, sets_per_day_bar, unique_exercises, weight_over_time_line};
 
@@ -20,12 +20,21 @@ struct WorkoutEntry {
     reps: u32,
 }
 
+#[derive(Default, Clone)]
+struct Settings {
+    show_weight: bool,
+    show_est_1rm: bool,
+    show_sets: bool,
+}
+
 struct MyApp {
     workouts: Vec<WorkoutEntry>,
     stats: BasicStats,
     selected_exercise: Option<String>,
     last_loaded: Option<String>,
     toast_start: Option<Instant>,
+    settings: Settings,
+    show_settings: bool,
 }
 
 impl Default for MyApp {
@@ -36,12 +45,28 @@ impl Default for MyApp {
             selected_exercise: None,
             last_loaded: None,
             toast_start: None,
+            settings: Settings {
+                show_weight: true,
+                show_est_1rm: true,
+                show_sets: true,
+            },
+            show_settings: false,
         }
     }
 }
 
 impl App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+            egui::menu::bar(ui, |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Settings").clicked() {
+                        self.show_settings = true;
+                        ui.close_menu();
+                    }
+                });
+            });
+        });
         egui::SidePanel::left("info_panel").show(ctx, |ui| {
             if self.workouts.is_empty() {
                 ui.label("No CSV loaded");
@@ -131,9 +156,15 @@ impl App for MyApp {
 
                 if let Some(ref ex) = self.selected_exercise {
                     Plot::new("exercise_plot").show(ui, |plot_ui| {
-                        plot_ui.line(weight_over_time_line(&self.workouts, ex));
-                        plot_ui.line(estimated_1rm_line(&self.workouts, ex));
-                        plot_ui.bar_chart(sets_per_day_bar(&self.workouts, Some(ex)));
+                        if self.settings.show_weight {
+                            plot_ui.line(weight_over_time_line(&self.workouts, ex));
+                        }
+                        if self.settings.show_est_1rm {
+                            plot_ui.line(estimated_1rm_line(&self.workouts, ex));
+                        }
+                        if self.settings.show_sets {
+                            plot_ui.bar_chart(sets_per_day_bar(&self.workouts, Some(ex)));
+                        }
                     });
                 }
             }
@@ -143,6 +174,16 @@ impl App for MyApp {
                 ui.label(format!("{:?}", entry));
             }
         });
+
+        if self.show_settings {
+            egui::Window::new("Settings")
+                .open(&mut self.show_settings)
+                .show(ctx, |ui| {
+                    ui.checkbox(&mut self.settings.show_weight, "Show Weight over time");
+                    ui.checkbox(&mut self.settings.show_est_1rm, "Show Estimated 1RM");
+                    ui.checkbox(&mut self.settings.show_sets, "Show Sets per day");
+                });
+        }
 
         if let Some(start) = self.toast_start {
             if start.elapsed() < Duration::from_secs(3) {
