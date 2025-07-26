@@ -39,7 +39,7 @@ date,exercise,weight,reps
 * **Stat Calculations** – After loading, the program computes totals such as average sets per workout, average reps per set, days between sessions and most frequent exercise.
 * **Plots** – For the selected exercise you can view:
   * Weight over time
-  * Estimated one‑rep max over time (Epley formula)
+  * Estimated one‑rep max over time
   * Sets per day (bar chart)
 
-Use the drop‑down at the top of the window to change the exercise displayed in the plots.
+Use the drop‑down at the top of the window to change the exercise displayed in the plots. Open the **Settings** window from the **File** menu to choose whether each plot is shown and select the formula (Epley or Brzycki) used for estimating 1RM.
