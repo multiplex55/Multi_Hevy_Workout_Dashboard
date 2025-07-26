@@ -3,6 +3,15 @@ use egui_plot::{Bar, BarChart, Line, PlotPoints};
 
 use crate::WorkoutEntry;
 
+/// Available formulas for estimating a one-rep max.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OneRmFormula {
+    /// Epley formula: `weight * (1 + reps / 30)`.
+    Epley,
+    /// Brzycki formula: `weight * 36 / (37 - reps)`.
+    Brzycki,
+}
+
 /// Generate a line plot of weight over time for a given exercise.
 pub fn weight_over_time_line(entries: &[WorkoutEntry], exercise: &str) -> Line {
     let points: Vec<[f64; 2]> = entries
@@ -18,17 +27,28 @@ pub fn weight_over_time_line(entries: &[WorkoutEntry], exercise: &str) -> Line {
 }
 
 /// Generate a line plot of estimated 1RM over time for a given exercise.
-/// Uses the Epley formula: weight * (1 + reps / 30).
-pub fn estimated_1rm_line(entries: &[WorkoutEntry], exercise: &str) -> Line {
+///
+/// * `entries` - All workout entries loaded from the CSV.
+/// * `exercise` - Name of the exercise to plot.
+/// * `formula` - The one-rep max estimation formula to use.
+pub fn estimated_1rm_line(entries: &[WorkoutEntry], exercise: &str, formula: OneRmFormula) -> Line {
     let points: Vec<[f64; 2]> = entries
         .iter()
         .filter(|e| e.exercise == exercise)
         .filter_map(|e| {
             NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
                 .ok()
-                .map(|d| {
-                    let est = e.weight as f64 * (1.0 + e.reps as f64 / 30.0);
-                    [d.num_days_from_ce() as f64, est]
+                .and_then(|d| {
+                    let est = match formula {
+                        OneRmFormula::Epley => e.weight as f64 * (1.0 + e.reps as f64 / 30.0),
+                        OneRmFormula::Brzycki => {
+                            if e.reps >= 37 {
+                                return None;
+                            }
+                            e.weight as f64 * 36.0 / (37.0 - e.reps as f64)
+                        }
+                    };
+                    Some([d.num_days_from_ce() as f64, est])
                 })
         })
         .collect();

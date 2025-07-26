@@ -10,7 +10,9 @@ use log::info;
 mod analysis;
 use analysis::{BasicStats, compute_stats, format_load_message};
 mod plotting;
-use plotting::{estimated_1rm_line, sets_per_day_bar, unique_exercises, weight_over_time_line};
+use plotting::{
+    OneRmFormula, estimated_1rm_line, sets_per_day_bar, unique_exercises, weight_over_time_line,
+};
 
 #[derive(Debug, Deserialize, Clone)]
 struct WorkoutEntry {
@@ -20,11 +22,23 @@ struct WorkoutEntry {
     reps: u32,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 struct Settings {
     show_weight: bool,
     show_est_1rm: bool,
     show_sets: bool,
+    one_rm_formula: OneRmFormula,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            show_weight: true,
+            show_est_1rm: true,
+            show_sets: true,
+            one_rm_formula: OneRmFormula::Epley,
+        }
+    }
 }
 
 struct MyApp {
@@ -45,11 +59,7 @@ impl Default for MyApp {
             selected_exercise: None,
             last_loaded: None,
             toast_start: None,
-            settings: Settings {
-                show_weight: true,
-                show_est_1rm: true,
-                show_sets: true,
-            },
+            settings: Settings::default(),
             show_settings: false,
         }
     }
@@ -160,7 +170,11 @@ impl App for MyApp {
                             plot_ui.line(weight_over_time_line(&self.workouts, ex));
                         }
                         if self.settings.show_est_1rm {
-                            plot_ui.line(estimated_1rm_line(&self.workouts, ex));
+                            plot_ui.line(estimated_1rm_line(
+                                &self.workouts,
+                                ex,
+                                self.settings.one_rm_formula,
+                            ));
                         }
                         if self.settings.show_sets {
                             plot_ui.bar_chart(sets_per_day_bar(&self.workouts, Some(ex)));
@@ -182,6 +196,26 @@ impl App for MyApp {
                     ui.checkbox(&mut self.settings.show_weight, "Show Weight over time");
                     ui.checkbox(&mut self.settings.show_est_1rm, "Show Estimated 1RM");
                     ui.checkbox(&mut self.settings.show_sets, "Show Sets per day");
+                    ui.horizontal(|ui| {
+                        ui.label("1RM Formula:");
+                        egui::ComboBox::from_id_source("rm_formula_setting")
+                            .selected_text(match self.settings.one_rm_formula {
+                                OneRmFormula::Epley => "Epley",
+                                OneRmFormula::Brzycki => "Brzycki",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.settings.one_rm_formula,
+                                    OneRmFormula::Epley,
+                                    "Epley",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.one_rm_formula,
+                                    OneRmFormula::Brzycki,
+                                    "Brzycki",
+                                );
+                            });
+                    });
                 });
         }
 
