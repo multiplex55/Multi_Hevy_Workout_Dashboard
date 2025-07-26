@@ -143,6 +143,7 @@ pub fn unique_exercises(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui_plot::{PlotGeometry, PlotItem};
 
     fn sample_entries() -> Vec<WorkoutEntry> {
         vec![
@@ -186,5 +187,66 @@ mod tests {
         let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
         let expected = vec![[d3.num_days_from_ce() as f64, 525.0]];
         assert_eq!(points, expected);
+    }
+
+    fn line_points(line: Line) -> Vec<[f64; 2]> {
+        if let PlotGeometry::Points(points) = line.geometry() {
+            points.iter().map(|p| [p.x, p.y]).collect()
+        } else {
+            panic!("expected points")
+        }
+    }
+
+    #[test]
+    fn test_training_volume_line() {
+        let line = training_volume_line(&sample_entries(), None, None);
+        let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
+        let expected = vec![
+            [d1.num_days_from_ce() as f64, 900.0],
+            [d3.num_days_from_ce() as f64, 525.0],
+        ];
+        assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_unique_exercises() {
+        let ex = unique_exercises(&sample_entries(), None, None);
+        assert_eq!(ex, vec!["Bench".to_string(), "Squat".to_string()]);
+    }
+
+    #[test]
+    fn test_unique_exercises_range() {
+        let start = NaiveDate::parse_from_str("2024-01-02", "%Y-%m-%d").ok();
+        let ex = unique_exercises(&sample_entries(), start, None);
+        assert_eq!(ex, vec!["Squat".to_string()]);
+    }
+
+    #[test]
+    fn test_estimated_1rm_line_formulas_and_range() {
+        let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
+        let line_e = estimated_1rm_line(
+            &sample_entries(),
+            "Squat",
+            OneRmFormula::Epley,
+            None,
+            None,
+        );
+        let expected_e = vec![
+            [d1.num_days_from_ce() as f64, 100.0 * (1.0 + 5.0 / 30.0)],
+            [d3.num_days_from_ce() as f64, 105.0 * (1.0 + 5.0 / 30.0)],
+        ];
+        assert_eq!(line_points(line_e), expected_e);
+
+        let line_b = estimated_1rm_line(
+            &sample_entries(),
+            "Squat",
+            OneRmFormula::Brzycki,
+            Some(d3),
+            None,
+        );
+        let expected_b = vec![[d3.num_days_from_ce() as f64, 105.0 * 36.0 / 32.0]];
+        assert_eq!(line_points(line_b), expected_b);
     }
 }
