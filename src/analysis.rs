@@ -2,10 +2,11 @@
 use crate::WorkoutEntry;
 use crate::plotting::OneRmFormula;
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Summary statistics about a workout log.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BasicStats {
     pub total_workouts: usize,
     pub avg_sets_per_workout: f32,
@@ -15,7 +16,7 @@ pub struct BasicStats {
 }
 
 /// Aggregated statistics for a single exercise.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ExerciseStats {
     pub total_sets: usize,
     pub total_reps: u32,
