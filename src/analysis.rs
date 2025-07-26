@@ -26,30 +26,36 @@ pub struct ExerciseStats {
 pub fn aggregate_exercise_stats(
     entries: &[WorkoutEntry],
     formula: OneRmFormula,
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
 ) -> HashMap<String, ExerciseStats> {
     let mut map: HashMap<String, ExerciseStats> = HashMap::new();
 
     for e in entries {
-        let stats = map
-            .entry(e.exercise.clone())
-            .or_insert_with(ExerciseStats::default);
-        stats.total_sets += 1;
-        stats.total_reps += e.reps;
-        stats.total_volume += e.weight * e.reps as f32;
+        if let Some(d) = parse_date(&e.date) {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let stats = map
+                    .entry(e.exercise.clone())
+                    .or_insert_with(ExerciseStats::default);
+                stats.total_sets += 1;
+                stats.total_reps += e.reps;
+                stats.total_volume += e.weight * e.reps as f32;
 
-        let est = match formula {
-            OneRmFormula::Epley => e.weight * (1.0 + e.reps as f32 / 30.0),
-            OneRmFormula::Brzycki => {
-                if e.reps >= 37 {
-                    continue;
-                }
-                e.weight * 36.0 / (37.0 - e.reps as f32)
+                let est = match formula {
+                    OneRmFormula::Epley => e.weight * (1.0 + e.reps as f32 / 30.0),
+                    OneRmFormula::Brzycki => {
+                        if e.reps >= 37 {
+                            continue;
+                        }
+                        e.weight * 36.0 / (37.0 - e.reps as f32)
+                    }
+                };
+                stats.best_est_1rm = match stats.best_est_1rm {
+                    Some(current) if current >= est => Some(current),
+                    _ => Some(est),
+                };
             }
-        };
-        stats.best_est_1rm = match stats.best_est_1rm {
-            Some(current) if current >= est => Some(current),
-            _ => Some(est),
-        };
+        }
     }
 
     map
@@ -64,28 +70,34 @@ pub fn format_load_message(entries: usize, filename: &str) -> String {
     format!("Loaded {} entries from {}", entries, filename)
 }
 
-pub fn compute_stats(entries: &[WorkoutEntry]) -> BasicStats {
+pub fn compute_stats(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> BasicStats {
     if entries.is_empty() {
         return BasicStats::default();
     }
 
     log::info!("Computing statistics for {} entries", entries.len());
 
-    // Map date -> sets count
+    // Map date -> sets count within range
     let mut sets_per_day: HashMap<NaiveDate, usize> = HashMap::new();
     let mut total_reps = 0u32;
     let mut exercise_counts: HashMap<&str, usize> = HashMap::new();
 
     for e in entries {
         if let Some(d) = parse_date(&e.date) {
-            *sets_per_day.entry(d).or_insert(0) += 1;
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                *sets_per_day.entry(d).or_insert(0) += 1;
+                total_reps += e.reps;
+                *exercise_counts.entry(e.exercise.as_str()).or_insert(0) += 1;
+            }
         }
-        total_reps += e.reps;
-        *exercise_counts.entry(e.exercise.as_str()).or_insert(0) += 1;
     }
 
     let total_workouts = sets_per_day.len();
-    let total_sets = entries.len();
+    let total_sets: usize = sets_per_day.values().sum();
 
     if total_workouts == 0 {
         log::warn!("No valid workout dates found");
@@ -177,7 +189,7 @@ mod tests {
     #[test]
     fn test_compute_stats() {
         let entries = sample_entries();
-        let stats = compute_stats(&entries);
+        let stats = compute_stats(&entries, None, None);
         assert_eq!(stats.total_workouts, 3);
         // total sets = 4, workouts = 3 -> avg 1.333...
         assert!((stats.avg_sets_per_workout - 4f32 / 3f32).abs() < 1e-6);
@@ -189,7 +201,7 @@ mod tests {
     #[test]
     fn test_invalid_dates_safe_stats() {
         let entries = invalid_date_entries();
-        let stats = compute_stats(&entries);
+        let stats = compute_stats(&entries, None, None);
         assert_eq!(stats, BasicStats::default());
     }
 
@@ -202,7 +214,7 @@ mod tests {
     #[test]
     fn test_aggregate_exercise_stats() {
         let entries = sample_entries();
-        let map = aggregate_exercise_stats(&entries, OneRmFormula::Epley);
+        let map = aggregate_exercise_stats(&entries, OneRmFormula::Epley, None, None);
 
         let squat = map.get("Squat").unwrap();
         assert_eq!(squat.total_sets, 2);
@@ -220,5 +232,13 @@ mod tests {
         assert_eq!(deadlift.total_sets, 1);
         assert_eq!(deadlift.total_reps, 5);
         assert!((deadlift.total_volume - 600.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_compute_stats_with_range() {
+        let entries = sample_entries();
+        let start = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").ok();
+        let stats = compute_stats(&entries, start, None);
+        assert_eq!(stats.total_workouts, 2);
     }
 }
