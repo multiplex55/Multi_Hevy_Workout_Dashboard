@@ -44,6 +44,11 @@ pub fn compute_stats(entries: &[WorkoutEntry]) -> BasicStats {
     let total_workouts = sets_per_day.len();
     let total_sets = entries.len();
 
+    if total_workouts == 0 {
+        log::warn!("No valid workout dates found");
+        return BasicStats::default();
+    }
+
     let avg_sets_per_workout = total_sets as f32 / total_workouts as f32;
     let avg_reps_per_set = total_reps as f32 / total_sets as f32;
 
@@ -109,6 +114,23 @@ mod tests {
         ]
     }
 
+    fn invalid_date_entries() -> Vec<WorkoutEntry> {
+        vec![
+            WorkoutEntry {
+                date: "not-a-date".into(),
+                exercise: "Squat".into(),
+                weight: 100.0,
+                reps: 5,
+            },
+            WorkoutEntry {
+                date: "2024-13-01".into(), // invalid month
+                exercise: "Bench".into(),
+                weight: 80.0,
+                reps: 5,
+            },
+        ]
+    }
+
     #[test]
     fn test_compute_stats() {
         let entries = sample_entries();
@@ -119,6 +141,13 @@ mod tests {
         assert!((stats.avg_reps_per_set - 5.0).abs() < 1e-6);
         assert!((stats.avg_days_between - 2.0).abs() < 1e-6); // (2 + 2)/2
         assert_eq!(stats.most_common_exercise.as_deref(), Some("Squat"));
+    }
+
+    #[test]
+    fn test_invalid_dates_safe_stats() {
+        let entries = invalid_date_entries();
+        let stats = compute_stats(&entries);
+        assert_eq!(stats, BasicStats::default());
     }
 
     #[test]
