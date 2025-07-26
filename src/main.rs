@@ -40,6 +40,30 @@ impl Default for MyApp {
 
 impl App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        egui::SidePanel::left("info_panel").show(ctx, |ui| {
+            if self.workouts.is_empty() {
+                ui.label("No CSV loaded");
+                ui.label("Load a CSV to begin");
+            } else {
+                ui.label(format!("Loaded {} entries", self.workouts.len()));
+            }
+
+            ui.separator();
+            if let Some(ref ex) = self.selected_exercise {
+                ui.label(format!("Selected exercise: {}", ex));
+            } else {
+                ui.label("No exercise selected");
+                ui.label("Select an exercise from the dropdown");
+            }
+
+            ui.separator();
+            ui.collapsing("Available plots", |ui| {
+                ui.label("• Weight over time");
+                ui.label("• Estimated 1RM");
+                ui.label("• Sets per day");
+            });
+        });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Load CSV").clicked() {
                 if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).pick_file() {
