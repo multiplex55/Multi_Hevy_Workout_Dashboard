@@ -24,14 +24,20 @@ On launch you will see a window with a **Load CSV** button.
 
 ## Hevy CSV Example
 
-Hevy exports workouts as a CSV where each row contains the workout date, exercise name, weight and reps. Example:
+Hevy exports workouts as a CSV. The dashboard expects the extended export which
+contains columns like the workout start time and exercise information. A snippet
+looks like:
 
 ```csv
-date,exercise,weight,reps
-2024-01-01,Squat,100,5
-2024-01-01,Bench,80,5
-2024-01-03,Squat,105,5
+"title","start_time","end_time","description","exercise_title","superset_id","exercise_notes","set_index","set_type","weight_lbs","reps","distance_miles","duration_seconds","rpe"
+"Week 12 - Lower - Strength","26 Jul 2025, 07:06","26 Jul 2025, 08:11","...","Lying Leg Curl (Machine)",,"",0,"warmup",100,10,,,
 ```
+
+Each row represents a single set. All columns are parsed and stored:
+`title`, `start_time`, `end_time`, `description`, `exercise_title`, `superset_id`,
+`exercise_notes`, `set_index`, `set_type`, `weight_lbs`, `reps`,
+`distance_miles`, `duration_seconds` and `rpe`. The graphs are generated from
+the workout date, exercise name, weight and reps.
 
 ## Features
 

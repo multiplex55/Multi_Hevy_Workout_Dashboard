@@ -26,6 +26,47 @@ struct WorkoutEntry {
     exercise: String,
     weight: f32,
     reps: u32,
+    raw: RawWorkoutRow,
+}
+
+#[derive(Debug, Deserialize, Clone, Serialize, Default)]
+struct RawWorkoutRow {
+    title: Option<String>,
+    start_time: String,
+    end_time: Option<String>,
+    description: Option<String>,
+    exercise_title: String,
+    superset_id: Option<String>,
+    exercise_notes: Option<String>,
+    set_index: Option<u32>,
+    set_type: Option<String>,
+    weight_lbs: Option<f32>,
+    reps: Option<u32>,
+    distance_miles: Option<f32>,
+    duration_seconds: Option<f32>,
+    rpe: Option<f32>,
+}
+
+fn parse_workout_csv<R: std::io::Read>(reader: R) -> Result<Vec<WorkoutEntry>, csv::Error> {
+    let mut rdr = csv::Reader::from_reader(reader);
+    let mut entries = Vec::new();
+    for result in rdr.deserialize::<RawWorkoutRow>() {
+        if let Ok(raw) = result {
+            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&raw.start_time, "%d %b %Y, %H:%M") {
+                let date = dt.date().format("%Y-%m-%d").to_string();
+                let weight = raw.weight_lbs.unwrap_or(0.0);
+                let reps = raw.reps.unwrap_or(0);
+                entries.push(WorkoutEntry {
+                    date,
+                    exercise: raw.exercise_title.clone(),
+                    weight,
+                    reps,
+                    raw,
+                });
+            }
+        }
+    }
+    Ok(entries)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -215,8 +256,11 @@ impl App for MyApp {
                         .map(|f| f.to_string_lossy().to_string())
                         .unwrap_or_else(|| path.display().to_string());
                     if let Ok(file) = File::open(&path) {
-                        let mut rdr = csv::Reader::from_reader(file);
-                        self.workouts = rdr.deserialize().filter_map(|res| res.ok()).collect();
+                        if let Ok(entries) = parse_workout_csv(file) {
+                            self.workouts = entries;
+                        } else {
+                            self.workouts.clear();
+                        }
                         info!("Loaded {} entries from {}", self.workouts.len(), filename);
                         self.stats = compute_stats(
                             &self.workouts,
@@ -469,5 +513,21 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         let loaded: Settings = serde_json::from_str(&json).unwrap();
         assert_eq!(s, loaded);
+    }
+
+    #[test]
+    fn parse_workout_csv_basic() {
+        let data = "title,start_time,end_time,description,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_lbs,reps,distance_miles,duration_seconds,rpe\n\
+Week 12 - Lower - Strength,\"26 Jul 2025, 07:06\",\"26 Jul 2025, 08:11\",desc,\"Lying Leg Curl (Machine)\",,,0,warmup,100,10,,,\n";
+        let entries = parse_workout_csv(data.as_bytes()).unwrap();
+        assert_eq!(entries.len(), 1);
+        let e = &entries[0];
+        assert_eq!(e.date, "2025-07-26");
+        assert_eq!(e.exercise, "Lying Leg Curl (Machine)");
+        assert_eq!(e.weight, 100.0);
+        assert_eq!(e.reps, 10);
+        assert_eq!(e.raw.exercise_title, "Lying Leg Curl (Machine)");
+        assert_eq!(e.raw.weight_lbs, Some(100.0));
+        assert_eq!(e.raw.reps, Some(10));
     }
 }

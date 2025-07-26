@@ -151,6 +151,7 @@ pub fn compute_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::RawWorkoutRow;
 
     fn sample_entries() -> Vec<WorkoutEntry> {
         vec![
@@ -159,24 +160,28 @@ mod tests {
                 exercise: "Squat".into(),
                 weight: 100.0,
                 reps: 5,
+                raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
                 weight: 80.0,
                 reps: 5,
+                raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-03".into(),
                 exercise: "Squat".into(),
                 weight: 105.0,
                 reps: 5,
+                raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-05".into(),
                 exercise: "Deadlift".into(),
                 weight: 120.0,
                 reps: 5,
+                raw: RawWorkoutRow::default(),
             },
         ]
     }
@@ -188,12 +193,14 @@ mod tests {
                 exercise: "Squat".into(),
                 weight: 100.0,
                 reps: 5,
+                raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-13-01".into(), // invalid month
                 exercise: "Bench".into(),
                 weight: 80.0,
                 reps: 5,
+                raw: RawWorkoutRow::default(),
             },
         ]
     }

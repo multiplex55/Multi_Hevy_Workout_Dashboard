@@ -157,6 +157,7 @@ pub fn unique_exercises(
 mod tests {
     use super::*;
     use egui_plot::{PlotGeometry, PlotItem};
+    use crate::RawWorkoutRow;
 
     fn sample_entries() -> Vec<WorkoutEntry> {
         vec![
@@ -165,18 +166,21 @@ mod tests {
                 exercise: "Squat".into(),
                 weight: 100.0,
                 reps: 5,
+                raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
                 weight: 80.0,
                 reps: 5,
+                raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-03".into(),
                 exercise: "Squat".into(),
                 weight: 105.0,
                 reps: 5,
+                raw: RawWorkoutRow::default(),
             },
         ]
     }
