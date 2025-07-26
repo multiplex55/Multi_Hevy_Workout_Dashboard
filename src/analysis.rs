@@ -16,10 +16,17 @@ fn parse_date(date: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()
 }
 
+/// Format the status message shown after loading a CSV file.
+pub fn format_load_message(entries: usize, filename: &str) -> String {
+    format!("Loaded {} entries from {}", entries, filename)
+}
+
 pub fn compute_stats(entries: &[WorkoutEntry]) -> BasicStats {
     if entries.is_empty() {
         return BasicStats::default();
     }
+
+    log::info!("Computing statistics for {} entries", entries.len());
 
     // Map date -> sets count
     let mut sets_per_day: HashMap<NaiveDate, usize> = HashMap::new();
@@ -112,5 +119,11 @@ mod tests {
         assert!((stats.avg_reps_per_set - 5.0).abs() < 1e-6);
         assert!((stats.avg_days_between - 2.0).abs() < 1e-6); // (2 + 2)/2
         assert_eq!(stats.most_common_exercise.as_deref(), Some("Squat"));
+    }
+
+    #[test]
+    fn test_format_load_message() {
+        let msg = format_load_message(10, "workouts.csv");
+        assert_eq!(msg, "Loaded 10 entries from workouts.csv");
     }
 }
