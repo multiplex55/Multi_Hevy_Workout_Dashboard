@@ -130,6 +130,7 @@ struct MyApp {
     workouts: Vec<WorkoutEntry>,
     stats: BasicStats,
     selected_exercise: Option<String>,
+    search_query: String,
     last_loaded: Option<String>,
     toast_start: Option<Instant>,
     settings: Settings,
@@ -144,6 +145,7 @@ impl Default for MyApp {
             workouts: Vec::new(),
             stats: BasicStats::default(),
             selected_exercise: None,
+            search_query: String::new(),
             last_loaded: None,
             toast_start: None,
             settings: Settings::load(),
@@ -307,14 +309,22 @@ impl App for MyApp {
                 }
                 ui.separator();
 
-                let exercises = unique_exercises(
+                let mut exercises = unique_exercises(
                     &self.workouts,
                     self.settings.start_date,
                     self.settings.end_date,
                 );
+                if !self.search_query.is_empty() {
+                    let q = self.search_query.to_lowercase();
+                    exercises.retain(|e| e.to_lowercase().contains(&q));
+                }
                 if self.selected_exercise.is_none() {
                     self.selected_exercise = exercises.first().cloned();
                 }
+                ui.horizontal(|ui| {
+                    ui.label("Filter:");
+                    ui.text_edit_singleline(&mut self.search_query);
+                });
                 ui.horizontal(|ui| {
                     ui.label("Exercise:");
                     egui::ComboBox::from_id_source("exercise_combo")
