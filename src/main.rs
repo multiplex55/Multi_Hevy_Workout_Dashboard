@@ -161,6 +161,8 @@ struct Settings {
     max_rpe: Option<f32>,
     notes_filter: Option<String>,
     #[serde(default)]
+    exclude_warmups: bool,
+    #[serde(default)]
     auto_load_last: bool,
     last_file: Option<String>,
     #[serde(default)]
@@ -231,6 +233,7 @@ impl Default for Settings {
             min_rpe: None,
             max_rpe: None,
             notes_filter: None,
+            exclude_warmups: false,
             auto_load_last: true,
             last_file: None,
             check_prs: false,
@@ -453,6 +456,17 @@ impl MyApp {
     }
 
     fn entry_matches_filters(&self, e: &WorkoutEntry) -> bool {
+        if self.settings.exclude_warmups {
+            if e
+                .raw
+                .set_type
+                .as_deref()
+                .map(|s| s.eq_ignore_ascii_case("warmup"))
+                == Some(true)
+            {
+                return false;
+            }
+        }
         if let Some(ref st) = self.settings.set_type_filter {
             if e.raw
                 .set_type
@@ -1538,6 +1552,12 @@ impl App for MyApp {
                             self.settings_dirty = true;
                         }
                     });
+                    if ui
+                        .checkbox(&mut self.settings.exclude_warmups, "Exclude warm-up sets")
+                        .changed()
+                    {
+                        self.settings_dirty = true;
+                    }
                     ui.horizontal(|ui| {
                         ui.label("Body part:");
                         let prev = self.settings.body_part_filter.clone();
@@ -1699,6 +1719,7 @@ mod tests {
         s.min_rpe = Some(6.0);
         s.max_rpe = Some(9.0);
         s.notes_filter = Some("tempo".into());
+        s.exclude_warmups = true;
         s.show_body_part_volume = true;
         s.auto_load_last = false;
         s.last_file = Some("/tmp/test.csv".into());
@@ -1802,6 +1823,40 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
         let filtered = app.filtered_entries();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].exercise, "Lying Leg Curl (Machine)");
+    }
+
+    #[test]
+    fn exclude_warmups() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 45.0,
+                reps: 10,
+                raw: RawWorkoutRow {
+                    set_type: Some("warmup".into()),
+                    ..RawWorkoutRow::default()
+                },
+            },
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow {
+                    set_type: Some("working".into()),
+                    ..RawWorkoutRow::default()
+                },
+            },
+        ];
+        let mut app = MyApp {
+            workouts: entries,
+            ..Default::default()
+        };
+        app.settings.exclude_warmups = true;
+        let filtered = app.filtered_entries();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].weight, 100.0);
     }
 
     #[test]
