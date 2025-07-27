@@ -11,7 +11,7 @@ use chrono::{Local, NaiveDate};
 use log::info;
 
 mod analysis;
-use analysis::{BasicStats, compute_stats, format_load_message};
+use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
     OneRmFormula, XAxis, YAxis, estimated_1rm_line, sets_per_day_bar, training_volume_line,
@@ -176,6 +176,15 @@ enum SortColumn {
     Reps,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SummarySort {
+    Exercise,
+    Sets,
+    Reps,
+    Volume,
+    Best1Rm,
+}
+
 struct MyApp {
     workouts: Vec<WorkoutEntry>,
     stats: BasicStats,
@@ -190,6 +199,8 @@ struct MyApp {
     show_plot_window: bool,
     sort_column: SortColumn,
     sort_ascending: bool,
+    summary_sort: SummarySort,
+    summary_sort_ascending: bool,
     capture_rect: Option<egui::Rect>,
     settings_dirty: bool,
 }
@@ -210,6 +221,8 @@ impl Default for MyApp {
             show_plot_window: false,
             sort_column: SortColumn::Date,
             sort_ascending: true,
+            summary_sort: SummarySort::Exercise,
+            summary_sort_ascending: true,
             capture_rect: None,
             settings_dirty: false,
         };
@@ -277,6 +290,62 @@ impl MyApp {
                 *sort_ascending = true;
             }
         }
+    }
+
+    fn summary_sort_button(
+        ui: &mut egui::Ui,
+        label: &str,
+        column: SummarySort,
+        sort_column: &mut SummarySort,
+        sort_ascending: &mut bool,
+    ) {
+        let arrow = if *sort_column == column {
+            if *sort_ascending {
+                " \u{25B2}"
+            } else {
+                " \u{25BC}"
+            }
+        } else {
+            ""
+        };
+        if ui.button(format!("{label}{arrow}")).clicked() {
+            if *sort_column == column {
+                *sort_ascending = !*sort_ascending;
+            } else {
+                *sort_column = column;
+                *sort_ascending = true;
+            }
+        }
+    }
+
+    fn sort_summary_stats(
+        stats: &mut Vec<(String, ExerciseStats)>,
+        sort: SummarySort,
+        ascending: bool,
+    ) {
+        stats.sort_by(|a, b| {
+            let ord = match sort {
+                SummarySort::Exercise => a.0.cmp(&b.0),
+                SummarySort::Sets => a.1.total_sets.cmp(&b.1.total_sets),
+                SummarySort::Reps => a.1.total_reps.cmp(&b.1.total_reps),
+                SummarySort::Volume => a
+                    .1
+                    .total_volume
+                    .partial_cmp(&b.1.total_volume)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+                SummarySort::Best1Rm => a
+                    .1
+                    .best_est_1rm
+                    .unwrap_or(0.0)
+                    .partial_cmp(&b.1.best_est_1rm.unwrap_or(0.0))
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            };
+            if ascending {
+                ord
+            } else {
+                ord.reverse()
+            }
+        });
     }
 
     fn entry_matches_filters(&self, e: &WorkoutEntry) -> bool {
@@ -628,17 +697,49 @@ impl App for MyApp {
                     )
                     .into_iter()
                     .collect::<Vec<_>>();
-                    stats.sort_by_key(|(ex, _)| ex.clone());
+                    let mut summary_sort = self.summary_sort;
+                    let mut summary_sort_ascending = self.summary_sort_ascending;
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         egui::Grid::new("exercise_summary_grid")
                             .striped(true)
                             .show(ui, |ui| {
-                                ui.label("Exercise");
-                                ui.label("Sets");
-                                ui.label("Reps");
-                                ui.label("Volume");
-                                ui.label("Best 1RM");
+                                MyApp::summary_sort_button(
+                                    ui,
+                                    "Exercise",
+                                    SummarySort::Exercise,
+                                    &mut summary_sort,
+                                    &mut summary_sort_ascending,
+                                );
+                                MyApp::summary_sort_button(
+                                    ui,
+                                    "Sets",
+                                    SummarySort::Sets,
+                                    &mut summary_sort,
+                                    &mut summary_sort_ascending,
+                                );
+                                MyApp::summary_sort_button(
+                                    ui,
+                                    "Reps",
+                                    SummarySort::Reps,
+                                    &mut summary_sort,
+                                    &mut summary_sort_ascending,
+                                );
+                                MyApp::summary_sort_button(
+                                    ui,
+                                    "Volume",
+                                    SummarySort::Volume,
+                                    &mut summary_sort,
+                                    &mut summary_sort_ascending,
+                                );
+                                MyApp::summary_sort_button(
+                                    ui,
+                                    "Best 1RM",
+                                    SummarySort::Best1Rm,
+                                    &mut summary_sort,
+                                    &mut summary_sort_ascending,
+                                );
                                 ui.end_row();
+                                MyApp::sort_summary_stats(&mut stats, summary_sort, summary_sort_ascending);
                                 for (ex, s) in stats {
                                     ui.label(ex);
                                     ui.label(s.total_sets.to_string());
@@ -654,6 +755,8 @@ impl App for MyApp {
                                 }
                             });
                     });
+                    self.summary_sort = summary_sort;
+                    self.summary_sort_ascending = summary_sort_ascending;
                 }
             });
         });
@@ -1208,5 +1311,48 @@ Week 12 - Lower - Strength,\"26 Jul 2025, 07:06\",\"26 Jul 2025, 08:11\",desc,\"
         assert_eq!(e.raw.exercise_title, "Lying Leg Curl (Machine)");
         assert_eq!(e.raw.weight_lbs, Some(100.0));
         assert_eq!(e.raw.reps, Some(10));
+    }
+
+    #[test]
+    fn sort_summary_stats_by_column() {
+        let mut stats = vec![
+            (
+                "Bench".to_string(),
+                ExerciseStats {
+                    total_sets: 2,
+                    total_reps: 10,
+                    total_volume: 200.0,
+                    best_est_1rm: Some(150.0),
+                },
+            ),
+            (
+                "Squat".to_string(),
+                ExerciseStats {
+                    total_sets: 1,
+                    total_reps: 5,
+                    total_volume: 300.0,
+                    best_est_1rm: Some(250.0),
+                },
+            ),
+            (
+                "Deadlift".to_string(),
+                ExerciseStats {
+                    total_sets: 3,
+                    total_reps: 15,
+                    total_volume: 400.0,
+                    best_est_1rm: Some(350.0),
+                },
+            ),
+        ];
+
+        MyApp::sort_summary_stats(&mut stats, SummarySort::Exercise, true);
+        assert_eq!(stats[0].0, "Bench");
+        assert_eq!(stats[1].0, "Deadlift");
+        assert_eq!(stats[2].0, "Squat");
+
+        MyApp::sort_summary_stats(&mut stats, SummarySort::Reps, false);
+        assert_eq!(stats[0].0, "Deadlift");
+        assert_eq!(stats[1].0, "Bench");
+        assert_eq!(stats[2].0, "Squat");
     }
 }
