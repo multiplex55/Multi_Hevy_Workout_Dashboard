@@ -95,6 +95,8 @@ struct Settings {
     show_sets: bool,
     show_volume: bool,
     highlight_max: bool,
+    show_smoothed: bool,
+    ma_window: usize,
     weight_unit: WeightUnit,
     one_rm_formula: OneRmFormula,
     start_date: Option<NaiveDate>,
@@ -145,6 +147,8 @@ impl Default for Settings {
             show_sets: true,
             show_volume: false,
             highlight_max: true,
+            show_smoothed: false,
+            ma_window: 5,
             weight_unit: WeightUnit::Lbs,
             one_rm_formula: OneRmFormula::Epley,
             start_date: None,
@@ -549,6 +553,11 @@ impl App for MyApp {
                     let sel: Vec<String> = self.selected_exercises.clone();
                     let plot_resp = Plot::new("exercise_plot").show(ui, |plot_ui| {
                         if self.settings.show_weight {
+                            let ma = if self.settings.show_smoothed {
+                                Some(self.settings.ma_window)
+                            } else {
+                                None
+                            };
                             for lw in weight_over_time_line(
                                 &filtered,
                                 &sel,
@@ -557,6 +566,7 @@ impl App for MyApp {
                                 self.settings.x_axis,
                                 self.settings.y_axis,
                                 self.settings.weight_unit,
+                                ma,
                             ) {
                                 plot_ui.line(lw.line);
                                 if self.settings.highlight_max {
@@ -572,6 +582,11 @@ impl App for MyApp {
                             }
                         }
                         if self.settings.show_est_1rm {
+                            let ma = if self.settings.show_smoothed {
+                                Some(self.settings.ma_window)
+                            } else {
+                                None
+                            };
                             for lr in estimated_1rm_line(
                                 &filtered,
                                 &sel,
@@ -580,6 +595,7 @@ impl App for MyApp {
                                 self.settings.end_date,
                                 self.settings.x_axis,
                                 self.settings.weight_unit,
+                                ma,
                             ) {
                                 plot_ui.line(lr.line);
                                 if self.settings.highlight_max {
@@ -595,14 +611,22 @@ impl App for MyApp {
                             }
                         }
                         if self.settings.show_volume {
-                            plot_ui.line(training_volume_line(
+                            let ma = if self.settings.show_smoothed {
+                                Some(self.settings.ma_window)
+                            } else {
+                                None
+                            };
+                            for l in training_volume_line(
                                 &filtered,
                                 self.settings.start_date,
                                 self.settings.end_date,
                                 self.settings.x_axis,
                                 self.settings.y_axis,
                                 self.settings.weight_unit,
-                            ));
+                                ma,
+                            ) {
+                                plot_ui.line(l);
+                            }
                         }
                         if self.settings.show_sets {
                             let ex_for_sets = if sel.len() == 1 {
@@ -779,6 +803,22 @@ impl App for MyApp {
                     {
                         self.settings_dirty = true;
                     }
+                    if ui
+                        .checkbox(&mut self.settings.show_smoothed, "Show moving average")
+                        .changed()
+                    {
+                        self.settings_dirty = true;
+                    }
+                    ui.horizontal(|ui| {
+                        ui.label("MA Window:");
+                        let mut w = self.settings.ma_window.to_string();
+                        if ui.text_edit_singleline(&mut w).changed() {
+                            if let Ok(v) = w.parse::<usize>() {
+                                self.settings.ma_window = v.max(1);
+                                self.settings_dirty = true;
+                            }
+                        }
+                    });
                     ui.horizontal(|ui| {
                         ui.label("Start date:");
                         let mut start = self
@@ -990,6 +1030,8 @@ mod tests {
         s.show_weight = false;
         s.show_est_1rm = false;
         s.show_sets = false;
+        s.show_smoothed = true;
+        s.ma_window = 3;
         s.one_rm_formula = OneRmFormula::Brzycki;
         s.start_date = Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
         s.end_date = Some(NaiveDate::from_ymd_opt(2024, 2, 1).unwrap());
