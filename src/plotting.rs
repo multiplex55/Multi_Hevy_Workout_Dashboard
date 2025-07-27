@@ -50,6 +50,7 @@ pub fn weight_over_time_line(
     x_axis: XAxis,
     y_axis: YAxis,
     unit: WeightUnit,
+    ma_window: Option<usize>,
 ) -> Vec<LineWithMarker> {
     let mut lines = Vec::new();
     for exercise in exercises {
@@ -80,9 +81,19 @@ pub fn weight_over_time_line(
             }
         }
         lines.push(LineWithMarker {
-            line: Line::new(PlotPoints::from(points)).name(exercise),
+            line: Line::new(PlotPoints::from(points.clone())).name(exercise),
             max_point,
         });
+        if let Some(w) = ma_window.filter(|w| *w > 1) {
+            if points.len() > 1 {
+                let ma_points = moving_average_points(&points, w);
+                lines.push(LineWithMarker {
+                    line: Line::new(PlotPoints::from(ma_points))
+                        .name(format!("{exercise} MA")),
+                    max_point: None,
+                });
+            }
+        }
     }
     lines
 }
@@ -101,6 +112,7 @@ pub fn estimated_1rm_line(
     end: Option<NaiveDate>,
     x_axis: XAxis,
     unit: WeightUnit,
+    ma_window: Option<usize>,
 ) -> Vec<LineWithMarker> {
     let mut lines = Vec::new();
     for exercise in exercises {
@@ -138,9 +150,19 @@ pub fn estimated_1rm_line(
             }
         }
         lines.push(LineWithMarker {
-            line: Line::new(PlotPoints::from(points)).name(exercise),
+            line: Line::new(PlotPoints::from(points.clone())).name(exercise),
             max_point,
         });
+        if let Some(w) = ma_window.filter(|w| *w > 1) {
+            if points.len() > 1 {
+                let ma_points = moving_average_points(&points, w);
+                lines.push(LineWithMarker {
+                    line: Line::new(PlotPoints::from(ma_points))
+                        .name(format!("{exercise} MA")),
+                    max_point: None,
+                });
+            }
+        }
     }
     lines
 }
@@ -211,6 +233,24 @@ fn training_volume_points(
     points
 }
 
+/// Calculate a simple moving average of the y-values in `points`.
+fn moving_average_points(points: &[[f64; 2]], window: usize) -> Vec<[f64; 2]> {
+    if window == 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(points.len());
+    let mut sum = 0.0;
+    for i in 0..points.len() {
+        sum += points[i][1];
+        if i >= window {
+            sum -= points[i - window][1];
+        }
+        let count = window.min(i + 1) as f64;
+        out.push([points[i][0], sum / count]);
+    }
+    out
+}
+
 /// Create a line plot of total training volume per day.
 ///
 /// Training volume is calculated as `weight * reps` for each set. Only entries
@@ -222,9 +262,18 @@ pub fn training_volume_line(
     x_axis: XAxis,
     y_axis: YAxis,
     unit: WeightUnit,
-) -> Line {
+    ma_window: Option<usize>,
+) -> Vec<Line> {
     let points = training_volume_points(entries, start, end, x_axis, y_axis, unit);
-    Line::new(PlotPoints::from(points)).name("Volume")
+    let mut lines = Vec::new();
+    lines.push(Line::new(PlotPoints::from(points.clone())).name("Volume"));
+    if let Some(w) = ma_window.filter(|w| *w > 1) {
+        if points.len() > 1 {
+            let ma_pts = moving_average_points(&points, w);
+            lines.push(Line::new(PlotPoints::from(ma_pts)).name(format!("Volume MA")));
+        }
+    }
+    lines
 }
 
 /// Return a sorted list of unique exercises found in the data.
@@ -314,6 +363,19 @@ mod tests {
         assert_eq!(points, expected);
     }
 
+    #[test]
+    fn test_moving_average_points() {
+        let points = vec![[0.0, 1.0], [1.0, 3.0], [2.0, 5.0], [3.0, 7.0]];
+        let ma = moving_average_points(&points, 2);
+        let expected = vec![
+            [0.0, 1.0],
+            [1.0, 2.0],
+            [2.0, 4.0],
+            [3.0, 6.0],
+        ];
+        assert_eq!(ma, expected);
+    }
+
     fn line_points(line: Line) -> Vec<[f64; 2]> {
         if let PlotGeometry::Points(points) = line.geometry() {
             points.iter().map(|p| [p.x, p.y]).collect()
@@ -331,7 +393,11 @@ mod tests {
             XAxis::Date,
             YAxis::Volume,
             WeightUnit::Lbs,
-        );
+            None,
+        )
+        .into_iter()
+        .next()
+        .unwrap();
         let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
         let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
         let expected = vec![
@@ -353,6 +419,7 @@ mod tests {
             XAxis::WorkoutIndex,
             YAxis::Weight,
             WeightUnit::Lbs,
+            None,
         );
         assert_eq!(res.len(), 1);
         let lw = res.into_iter().next().unwrap();
@@ -370,7 +437,11 @@ mod tests {
             XAxis::WorkoutIndex,
             YAxis::Volume,
             WeightUnit::Lbs,
-        );
+            None,
+        )
+        .into_iter()
+        .next()
+        .unwrap();
         let expected = vec![[0.0, 900.0], [1.0, 525.0]];
         assert_eq!(line_points(line), expected);
     }
@@ -400,6 +471,7 @@ mod tests {
             None,
             XAxis::Date,
             WeightUnit::Lbs,
+            None,
         );
         assert_eq!(res_e.len(), 1);
         let expected_e = vec![
@@ -418,6 +490,7 @@ mod tests {
             None,
             XAxis::Date,
             WeightUnit::Lbs,
+            None,
         );
         assert_eq!(res_b.len(), 1);
         let lw_b = res_b.into_iter().next().unwrap();
