@@ -1,7 +1,7 @@
 use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui_extras::DatePickerButton;
-use egui_plot::{Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points};
+use egui_plot::{Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points, Legend};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -680,6 +680,7 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let pointer = plot_ui.pointer_coordinate();
                             let ma = if self.settings.show_smoothed {
@@ -784,6 +785,7 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let pointer = plot_ui.pointer_coordinate();
                             let ma = if self.settings.show_smoothed {
@@ -886,6 +888,7 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let pointer = plot_ui.pointer_coordinate();
                             let ma = if self.settings.show_smoothed {
@@ -990,6 +993,7 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let ma = if self.settings.show_smoothed {
                                 Some(self.settings.ma_window)
@@ -1024,6 +1028,7 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let ma = if self.settings.show_smoothed {
                                 Some(self.settings.ma_window)
@@ -1054,6 +1059,7 @@ impl MyApp {
                     };
                     let resp = Plot::new("sets_plot")
                         .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
+                        .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             plot_ui.bar_chart(sets_per_day_bar(
                                 filtered,
