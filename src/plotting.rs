@@ -424,6 +424,31 @@ fn ema_points(points: &[[f64; 2]], alpha: f64) -> Vec<[f64; 2]> {
 ///
 /// Returns a pair of points representing the start and end of the
 /// regression line across the provided data range.
+/// Create a trend line based on a slope and the mean of the provided points.
+///
+/// This is useful when the slope has already been calculated using a
+/// regression method and we simply need the start and end coordinates for the
+/// overlay line.
+pub fn trend_line_points_from_slope(points: &[[f64; 2]], slope: f64) -> Vec<[f64; 2]> {
+    if points.len() < 2 {
+        return Vec::new();
+    }
+
+    let n = points.len() as f64;
+    let mean_x: f64 = points.iter().map(|p| p[0]).sum::<f64>() / n;
+    let mean_y: f64 = points.iter().map(|p| p[1]).sum::<f64>() / n;
+    let intercept = mean_y - slope * mean_x;
+
+    let x_start = points.first().unwrap()[0];
+    let x_end = points.last().unwrap()[0];
+    vec![
+        [x_start, slope * x_start + intercept],
+        [x_end, slope * x_end + intercept],
+    ]
+}
+
+/// Generate a simple trend line for the given set of points using
+/// linear regression.
 pub fn trend_line_points(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
     if points.len() < 2 {
         return Vec::new();
@@ -440,14 +465,7 @@ pub fn trend_line_points(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
         den += (p[0] - mean_x) * (p[0] - mean_x);
     }
     let slope = if den == 0.0 { 0.0 } else { num / den };
-    let intercept = mean_y - slope * mean_x;
-
-    let x_start = points.first().unwrap()[0];
-    let x_end = points.last().unwrap()[0];
-    vec![
-        [x_start, slope * x_start + intercept],
-        [x_end, slope * x_end + intercept],
-    ]
+    trend_line_points_from_slope(points, slope)
 }
 
 /// Create a line plot of total training volume per day.
@@ -722,6 +740,14 @@ mod tests {
     fn test_trend_line_points() {
         let pts = vec![[0.0, 1.0], [1.0, 3.0], [2.0, 5.0]];
         let trend = trend_line_points(&pts);
+        assert_eq!(trend, vec![[0.0, 1.0], [2.0, 5.0]]);
+    }
+
+    #[test]
+    fn test_trend_line_points_from_slope() {
+        let pts = vec![[0.0, 1.0], [1.0, 3.0], [2.0, 5.0]];
+        // slope is 2.0 for this perfectly linear data
+        let trend = trend_line_points_from_slope(&pts, 2.0);
         assert_eq!(trend, vec![[0.0, 1.0], [2.0, 5.0]]);
     }
 
