@@ -1683,17 +1683,41 @@ impl App for MyApp {
                         self.settings.start_date,
                         self.settings.end_date,
                     );
-                    for ex in &self.selected_exercises {
-                        if let Some(s) = stats_map.get(ex) {
-                            let f = self.settings.weight_unit.factor();
-                            ui.label(format!(
-                                "{ex}: {} sets, {} reps, {:.1} volume",
-                                s.total_sets,
-                                s.total_reps,
-                                s.total_volume * f
-                            ));
-                        }
-                    }
+                    let f = self.settings.weight_unit.factor();
+                    egui::Grid::new("exercise_stats_grid")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.label("Exercise");
+                            ui.label("Sets");
+                            ui.label("Reps");
+                            ui.label("Volume");
+                            ui.label("Max Weight");
+                            ui.label("Best 1RM");
+                            ui.label("Weight Trend");
+                            ui.label("Volume Trend");
+                            ui.end_row();
+                            for ex in &self.selected_exercises {
+                                if let Some(s) = stats_map.get(ex) {
+                                    ui.label(ex);
+                                    ui.label(s.total_sets.to_string());
+                                    ui.label(s.total_reps.to_string());
+                                    ui.label(format!("{:.1}", s.total_volume * f));
+                                    if let Some(w) = s.max_weight {
+                                        ui.label(format!("{:.1}", w * f));
+                                    } else {
+                                        ui.label("-");
+                                    }
+                                    if let Some(b) = s.best_est_1rm {
+                                        ui.label(format!("{:.1}", b * f));
+                                    } else {
+                                        ui.label("-");
+                                    }
+                                    ui.label(MyApp::trend_value(s.weight_trend, f));
+                                    ui.label(MyApp::trend_value(s.volume_trend, f));
+                                    ui.end_row();
+                                }
+                            }
+                        });
                 });
             self.show_exercise_stats = open;
         }
