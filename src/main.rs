@@ -1392,7 +1392,7 @@ impl App for MyApp {
                 });
                 ui.horizontal(|ui| {
                     ui.label("Exercises:");
-                    egui::ComboBox::from_id_source("exercise_combo")
+                    let resp = egui::ComboBox::from_id_source("exercise_combo")
                         .selected_text(if self.selected_exercises.is_empty() {
                             String::new()
                         } else {
@@ -1412,6 +1412,20 @@ impl App for MyApp {
                                 }
                             }
                         });
+                    let _ = ctx.input(|i| i.pointer.interact_pos());
+                    resp.response.context_menu(|ui| {
+                        if ui.button("Clear selection").clicked() {
+                            self.selected_exercises.clear();
+                            ui.close_menu();
+                        }
+                        for ex in self.selected_exercises.clone() {
+                            let label = format!("Remove {ex}");
+                            if ui.button(label).clicked() {
+                                self.selected_exercises.retain(|e| e != &ex);
+                                ui.close_menu();
+                            }
+                        }
+                    });
                 });
 
                 if self.selected_exercises.is_empty() {
@@ -1423,6 +1437,28 @@ impl App for MyApp {
                         self.capture_rect = Some(plot_resp.response.rect);
                         ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
                     }
+                    let _ = ctx.input(|i| i.pointer.interact_pos());
+                    plot_resp.response.context_menu(|ui| {
+                        if ui.button("Export CSV").clicked() {
+                            if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).save_file() {
+                                let entries: Vec<WorkoutEntry> = self
+                                    .filtered_entries()
+                                    .into_iter()
+                                    .filter(|e| self.selected_exercises.contains(&e.exercise))
+                                    .collect();
+                                if let Err(e) = save_entries_csv(&path, &entries) {
+                                    log::error!("Failed to export entries: {e}");
+                                }
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("Remove exercise").clicked() {
+                            for ex in &sel {
+                                self.selected_exercises.retain(|e| e != ex);
+                            }
+                            ui.close_menu();
+                        }
+                    });
                     if ui.button("Plot Window").clicked() {
                         self.show_plot_window = !self.show_plot_window;
                     }
