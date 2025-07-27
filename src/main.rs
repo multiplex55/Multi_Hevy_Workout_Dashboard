@@ -107,6 +107,9 @@ struct Settings {
     min_rpe: Option<f32>,
     max_rpe: Option<f32>,
     notes_filter: Option<String>,
+    #[serde(default)]
+    auto_load_last: bool,
+    last_file: Option<String>,
 }
 
 impl Settings {
@@ -159,6 +162,8 @@ impl Default for Settings {
             min_rpe: None,
             max_rpe: None,
             notes_filter: None,
+            auto_load_last: true,
+            last_file: None,
         }
     }
 }
@@ -190,7 +195,7 @@ struct MyApp {
 
 impl Default for MyApp {
     fn default() -> Self {
-        Self {
+        let mut app = Self {
             workouts: Vec::new(),
             stats: BasicStats::default(),
             selected_exercises: Vec::new(),
@@ -205,7 +210,43 @@ impl Default for MyApp {
             sort_ascending: true,
             capture_rect: None,
             settings_dirty: false,
+        };
+
+        if app.settings.auto_load_last {
+            if let Some(ref path) = app.settings.last_file {
+                let p = std::path::Path::new(path);
+                if p.exists() {
+                    if let Ok(file) = File::open(p) {
+                        if let Ok(entries) = parse_workout_csv(file) {
+                            app.workouts = entries;
+                            app.stats = compute_stats(
+                                &app.workouts,
+                                app.settings.start_date,
+                                app.settings.end_date,
+                            );
+                            if app.selected_exercises.is_empty() {
+                                let filtered = app.filtered_entries();
+                                if let Some(first) = unique_exercises(
+                                    &filtered,
+                                    app.settings.start_date,
+                                    app.settings.end_date,
+                                )
+                                .into_iter()
+                                .next()
+                                {
+                                    app.selected_exercises.push(first);
+                                }
+                            }
+                            app.last_loaded =
+                                p.file_name().map(|f| f.to_string_lossy().to_string());
+                            app.toast_start = Some(Instant::now());
+                        }
+                    }
+                }
+            }
         }
+
+        app
     }
 }
 
@@ -488,6 +529,8 @@ impl App for MyApp {
                         }
                         self.last_loaded = Some(filename);
                         self.toast_start = Some(Instant::now());
+                        self.settings.last_file = Some(path.display().to_string());
+                        self.settings_dirty = true;
                     }
                 }
             }
@@ -798,6 +841,12 @@ impl App for MyApp {
                         self.settings_dirty = true;
                     }
                     if ui
+                        .checkbox(&mut self.settings.auto_load_last, "Auto-load last file")
+                        .changed()
+                    {
+                        self.settings_dirty = true;
+                    }
+                    if ui
                         .checkbox(&mut self.settings.highlight_max, "Highlight maximums")
                         .changed()
                     {
@@ -1042,6 +1091,8 @@ mod tests {
         s.min_rpe = Some(6.0);
         s.max_rpe = Some(9.0);
         s.notes_filter = Some("tempo".into());
+        s.auto_load_last = false;
+        s.last_file = Some("/tmp/test.csv".into());
 
         let json = serde_json::to_string(&s).unwrap();
         let loaded: Settings = serde_json::from_str(&json).unwrap();
