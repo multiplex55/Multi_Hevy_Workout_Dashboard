@@ -733,9 +733,9 @@ impl MyApp {
             if plot_resp.response.hovered() {
                 egui::show_tooltip_at_pointer(ctx, egui::Id::new("plot_tip"), |ui| {
                     let x_text = match self.settings.x_axis {
-                        XAxis::Date => NaiveDate::from_num_days_from_ce(p[0] as i32)
-                            .format("%Y-%m-%d")
-                            .to_string(),
+                        XAxis::Date => NaiveDate::from_num_days_from_ce_opt(p[0] as i32)
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_else(|| format!("{}", p[0] as i64)),
                         XAxis::WorkoutIndex => format!("{}", p[0] as i64),
                     };
                     ui.label(format!("{x_text}: {:.2}", p[1]));
