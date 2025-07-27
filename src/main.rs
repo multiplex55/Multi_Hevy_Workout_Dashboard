@@ -113,6 +113,8 @@ struct Settings {
     show_volume: bool,
     show_body_part_volume: bool,
     highlight_max: bool,
+    #[serde(default)]
+    show_records: bool,
     show_smoothed: bool,
     ma_window: usize,
     smoothing_method: SmoothingMethod,
@@ -174,6 +176,7 @@ impl Default for Settings {
             show_volume: false,
             show_body_part_volume: false,
             highlight_max: true,
+            show_records: true,
             show_smoothed: false,
             smoothing_method: SmoothingMethod::SimpleMA,
             ma_window: 5,
@@ -487,6 +490,14 @@ impl MyApp {
                                 );
                             }
                         }
+                        if self.settings.show_records && !lw.record_points.is_empty() {
+                            plot_ui.points(
+                                Points::new(lw.record_points)
+                                    .shape(MarkerShape::Square)
+                                    .color(egui::Color32::GREEN)
+                                    .name("Record"),
+                            );
+                        }
                     }
                 }
                 if self.settings.show_est_1rm {
@@ -519,6 +530,14 @@ impl MyApp {
                                         .name("Max 1RM"),
                                 );
                             }
+                        }
+                        if self.settings.show_records && !lr.record_points.is_empty() {
+                            plot_ui.points(
+                                Points::new(lr.record_points)
+                                    .shape(MarkerShape::Asterisk)
+                                    .color(egui::Color32::LIGHT_BLUE)
+                                    .name("Record"),
+                            );
                         }
                     }
                 }
@@ -1146,6 +1165,12 @@ impl App for MyApp {
                         self.settings_dirty = true;
                     }
                     if ui
+                        .checkbox(&mut self.settings.show_records, "Show record markers")
+                        .changed()
+                    {
+                        self.settings_dirty = true;
+                    }
+                    if ui
                         .checkbox(&mut self.settings.show_smoothed, "Show moving average")
                         .changed()
                     {
@@ -1485,6 +1510,7 @@ mod tests {
         s.x_axis = XAxis::WorkoutIndex;
         s.y_axis = YAxis::Volume;
         s.weight_unit = WeightUnit::Kg;
+        s.show_records = false;
         s.set_type_filter = Some("working".into());
         s.body_part_filter = Some("Chest".into());
         s.exercise_type_filter = Some(ExerciseType::Compound);
@@ -1597,6 +1623,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
                     total_reps: 10,
                     total_volume: 200.0,
                     best_est_1rm: Some(150.0),
+                    best_weight: None,
                 },
             ),
             (
@@ -1606,6 +1633,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
                     total_reps: 5,
                     total_volume: 300.0,
                     best_est_1rm: Some(250.0),
+                    best_weight: None,
                 },
             ),
             (
@@ -1615,6 +1643,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
                     total_reps: 15,
                     total_volume: 400.0,
                     best_est_1rm: Some(350.0),
+                    best_weight: None,
                 },
             ),
         ];

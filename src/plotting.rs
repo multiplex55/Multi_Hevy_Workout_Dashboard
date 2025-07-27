@@ -63,6 +63,7 @@ pub struct LineWithMarker {
     pub line: Line,
     pub points: Vec<[f64; 2]>,
     pub max_point: Option<[f64; 2]>,
+    pub record_points: Vec<[f64; 2]>,
 }
 
 /// Generate a line plot of weight over time for one or more exercises.
@@ -84,10 +85,16 @@ pub fn weight_over_time_line(
     let mut lines = Vec::new();
     for exercise in exercises {
         let mut points = Vec::new();
+        let mut record_points = Vec::new();
         let mut idx = 0usize;
         let mut max_weight = f64::NEG_INFINITY;
+        let mut record_max = f64::NEG_INFINITY;
         let mut max_point = None;
-        for e in entries.iter().filter(|e| e.exercise == *exercise) {
+
+        let mut ex_entries: Vec<&WorkoutEntry> =
+            entries.iter().filter(|e| e.exercise == *exercise).collect();
+        ex_entries.sort_by(|a, b| a.date.cmp(&b.date));
+        for e in ex_entries {
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
                 if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                     let x = match x_axis {
@@ -95,13 +102,20 @@ pub fn weight_over_time_line(
                         XAxis::WorkoutIndex => idx as f64,
                     };
                     let f = unit.factor() as f64;
+                    let weight = e.weight as f64 * f;
                     let y = match y_axis {
-                        YAxis::Weight => e.weight as f64 * f,
-                        YAxis::Volume => e.weight as f64 * f * e.reps as f64,
+                        YAxis::Weight => weight,
+                        YAxis::Volume => weight * e.reps as f64,
                     };
                     if e.weight as f64 * f > max_weight {
                         max_weight = e.weight as f64 * f;
                         max_point = Some([x, y]);
+                    }
+                    if weight > record_max {
+                        record_max = weight;
+                        if y_axis == YAxis::Weight {
+                            record_points.push([x, y]);
+                        }
                     }
                     points.push([x, y]);
                     idx += 1;
@@ -112,6 +126,7 @@ pub fn weight_over_time_line(
             line: Line::new(PlotPoints::from(points.clone())).name(exercise),
             points: points.clone(),
             max_point,
+            record_points,
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
@@ -127,6 +142,7 @@ pub fn weight_over_time_line(
                         .name(format!("{exercise} MA")),
                     points: smooth_points,
                     max_point: None,
+                    record_points: Vec::new(),
                 });
             }
         }
@@ -154,10 +170,16 @@ pub fn estimated_1rm_line(
     let mut lines = Vec::new();
     for exercise in exercises {
         let mut points = Vec::new();
+        let mut record_points = Vec::new();
         let mut idx = 0usize;
         let mut max_est = f64::NEG_INFINITY;
+        let mut record_max = f64::NEG_INFINITY;
         let mut max_point = None;
-        for e in entries.iter().filter(|e| e.exercise == *exercise) {
+
+        let mut ex_entries: Vec<&WorkoutEntry> =
+            entries.iter().filter(|e| e.exercise == *exercise).collect();
+        ex_entries.sort_by(|a, b| a.date.cmp(&b.date));
+        for e in ex_entries {
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
                 if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                     let f = unit.factor() as f64;
@@ -178,6 +200,10 @@ pub fn estimated_1rm_line(
                         max_est = est;
                         max_point = Some([x, est]);
                     }
+                    if est > record_max {
+                        record_max = est;
+                        record_points.push([x, est]);
+                    }
                     points.push([x, est]);
                     idx += 1;
                 }
@@ -187,6 +213,7 @@ pub fn estimated_1rm_line(
             line: Line::new(PlotPoints::from(points.clone())).name(exercise),
             points: points.clone(),
             max_point,
+            record_points,
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
@@ -202,6 +229,7 @@ pub fn estimated_1rm_line(
                         .name(format!("{exercise} MA")),
                     points: smooth_points,
                     max_point: None,
+                    record_points: Vec::new(),
                 });
             }
         }
@@ -664,6 +692,7 @@ mod tests {
         let expected = vec![[d1, 100.0], [d2, 105.0]];
         assert_eq!(line_points(lw.line), expected);
         assert_eq!(lw.max_point, Some([d2, 105.0]));
+        assert_eq!(lw.record_points, expected);
     }
 
     #[test]
@@ -741,6 +770,7 @@ mod tests {
         let lw_e = res_e.into_iter().next().unwrap();
         assert_eq!(line_points(lw_e.line), expected_e);
         assert_eq!(lw_e.max_point, Some(expected_e[1]));
+        assert_eq!(lw_e.record_points, expected_e);
 
         let res_b = estimated_1rm_line(
             &sample_entries(),
@@ -758,5 +788,6 @@ mod tests {
         let expected_b = vec![[d3.num_days_from_ce() as f64, 105.0 * 36.0 / 32.0]];
         assert_eq!(line_points(lw_b.line), expected_b);
         assert_eq!(lw_b.max_point, Some(expected_b[0]));
+        assert_eq!(lw_b.record_points, expected_b);
     }
 }

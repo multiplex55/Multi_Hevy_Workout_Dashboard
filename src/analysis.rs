@@ -23,6 +23,7 @@ pub struct ExerciseStats {
     pub total_reps: u32,
     pub total_volume: f32,
     pub best_est_1rm: Option<f32>,
+    pub best_weight: Option<f32>,
 }
 
 /// Aggregate per-exercise statistics from a slice of workout entries.
@@ -47,6 +48,10 @@ pub fn aggregate_exercise_stats(
                 stats.total_sets += 1;
                 stats.total_reps += e.reps;
                 stats.total_volume += e.weight * e.reps as f32;
+                stats.best_weight = match stats.best_weight {
+                    Some(w) if w >= e.weight => Some(w),
+                    _ => Some(e.weight),
+                };
 
                 let est = match formula {
                     OneRmFormula::Epley => e.weight * (1.0 + e.reps as f32 / 30.0),
@@ -263,17 +268,20 @@ mod tests {
         assert_eq!(squat.total_reps, 10);
         assert!((squat.total_volume - 1025.0).abs() < 1e-6);
         assert!((squat.best_est_1rm.unwrap() - 122.5).abs() < 1e-3);
+        assert_eq!(squat.best_weight, Some(105.0));
 
         let bench = map.get("Bench").unwrap();
         assert_eq!(bench.total_sets, 1);
         assert_eq!(bench.total_reps, 5);
         assert!((bench.total_volume - 400.0).abs() < 1e-6);
         assert!((bench.best_est_1rm.unwrap() - 93.3333).abs() < 1e-3);
+        assert_eq!(bench.best_weight, Some(80.0));
 
         let deadlift = map.get("Deadlift").unwrap();
         assert_eq!(deadlift.total_sets, 1);
         assert_eq!(deadlift.total_reps, 5);
         assert!((deadlift.total_volume - 600.0).abs() < 1e-6);
+        assert_eq!(deadlift.best_weight, Some(120.0));
     }
 
     #[test]
