@@ -145,6 +145,8 @@ struct Settings {
     show_exercise_volume: bool,
     #[serde(default)]
     show_exercise_stats: bool,
+    #[serde(default)]
+    show_exercise_panel: bool,
     highlight_max: bool,
     show_smoothed: bool,
     ma_window: usize,
@@ -227,6 +229,7 @@ impl Default for Settings {
             show_body_part_volume: false,
             show_exercise_volume: false,
             show_exercise_stats: false,
+            show_exercise_panel: true,
             highlight_max: true,
             show_smoothed: false,
             smoothing_method: SmoothingMethod::SimpleMA,
@@ -297,6 +300,7 @@ struct MyApp {
     show_entries: bool,
     show_plot_window: bool,
     show_exercise_stats: bool,
+    show_exercise_panel: bool,
     show_about: bool,
     sort_column: SortColumn,
     sort_ascending: bool,
@@ -312,6 +316,7 @@ impl Default for MyApp {
     fn default() -> Self {
         let settings = Settings::load();
         let show_exercise_stats = settings.show_exercise_stats;
+        let show_exercise_panel = settings.show_exercise_panel;
         let mut app = Self {
             workouts: Vec::new(),
             stats: BasicStats::default(),
@@ -325,6 +330,7 @@ impl Default for MyApp {
             show_entries: false,
             show_plot_window: false,
             show_exercise_stats,
+            show_exercise_panel,
             show_about: false,
             sort_column: SortColumn::Date,
             sort_ascending: true,
@@ -1019,6 +1025,7 @@ impl MyApp {
         self.settings.summary_sort = self.summary_sort;
         self.settings.summary_sort_ascending = self.summary_sort_ascending;
         self.settings.show_exercise_stats = self.show_exercise_stats;
+        self.settings.show_exercise_panel = self.show_exercise_panel;
     }
 }
 
@@ -1068,6 +1075,12 @@ impl App for MyApp {
                     if ui.button("Exercise Stats").clicked() {
                         self.show_exercise_stats = !self.show_exercise_stats;
                         self.settings.show_exercise_stats = self.show_exercise_stats;
+                        self.settings_dirty = true;
+                        ui.close_menu();
+                    }
+                    if ui.button("Exercise Panel").clicked() {
+                        self.show_exercise_panel = !self.show_exercise_panel;
+                        self.settings.show_exercise_panel = self.show_exercise_panel;
                         self.settings_dirty = true;
                         ui.close_menu();
                     }
@@ -1165,25 +1178,26 @@ impl App for MyApp {
             });
         });
 
-        egui::SidePanel::right("exercise_panel").show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                if !self.workouts.is_empty() {
-                    ui.heading("Exercise Summary");
-                    let filtered = self.filtered_entries();
-                    let mut stats = analysis::aggregate_exercise_stats(
-                        &filtered,
-                        self.settings.one_rm_formula,
-                        self.settings.start_date,
-                        self.settings.end_date,
-                    )
-                    .into_iter()
-                    .collect::<Vec<_>>();
-                    let mut summary_sort = self.summary_sort;
-                    let mut summary_sort_ascending = self.summary_sort_ascending;
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        egui::Grid::new("exercise_summary_grid")
-                            .striped(true)
-                            .show(ui, |ui| {
+        if self.show_exercise_panel {
+            egui::SidePanel::right("exercise_panel").show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    if !self.workouts.is_empty() {
+                        ui.heading("Exercise Summary");
+                        let filtered = self.filtered_entries();
+                        let mut stats = analysis::aggregate_exercise_stats(
+                            &filtered,
+                            self.settings.one_rm_formula,
+                            self.settings.start_date,
+                            self.settings.end_date,
+                        )
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                        let mut summary_sort = self.summary_sort;
+                        let mut summary_sort_ascending = self.summary_sort_ascending;
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            egui::Grid::new("exercise_summary_grid")
+                                .striped(true)
+                                .show(ui, |ui| {
                                 MyApp::summary_sort_button(
                                     ui,
                                     "Exercise",
@@ -1255,12 +1269,13 @@ impl App for MyApp {
                                     ui.end_row();
                                 }
                             });
-                    });
-                    self.summary_sort = summary_sort;
-                    self.summary_sort_ascending = summary_sort_ascending;
-                }
+                        });
+                        self.summary_sort = summary_sort;
+                        self.summary_sort_ascending = summary_sort_ascending;
+                    }
+                });
             });
-        });
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Load CSV").clicked() {
@@ -1385,6 +1400,11 @@ impl App for MyApp {
                     if ui.button("Exercise Stats").clicked() {
                         self.show_exercise_stats = !self.show_exercise_stats;
                         self.settings.show_exercise_stats = self.show_exercise_stats;
+                        self.settings_dirty = true;
+                    }
+                    if ui.button("Exercise Panel").clicked() {
+                        self.show_exercise_panel = !self.show_exercise_panel;
+                        self.settings.show_exercise_panel = self.show_exercise_panel;
                         self.settings_dirty = true;
                     }
                 }
@@ -2140,6 +2160,7 @@ mod tests {
         s.show_body_part_volume = true;
         s.show_exercise_volume = true;
         s.show_exercise_stats = true;
+        s.show_exercise_panel = false;
         s.body_part_volume_aggregation = VolumeAggregation::Monthly;
         s.auto_load_last = false;
         s.last_file = Some("/tmp/test.csv".into());
