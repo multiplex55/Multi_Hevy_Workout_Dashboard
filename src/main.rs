@@ -578,244 +578,393 @@ impl MyApp {
         filtered: &[WorkoutEntry],
         sel: &[String],
     ) -> egui_plot::PlotResponse<()> {
-        let mut all_points: Vec<[f64; 2]> = Vec::new();
-        let mut highlight: Option<[f64; 2]> = None;
         let x_axis = self.settings.x_axis;
-        let plot_resp = Plot::new("exercise_plot")
-            .x_axis_formatter(move |mark, _chars, _| {
-                if x_axis == XAxis::Date {
-                    NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
-                        .map(|d| d.format("%Y-%m-%d").to_string())
-                        .unwrap_or_else(|| format!("{:.0}", mark.value))
-                } else {
-                    format!("{:.0}", mark.value)
-                }
-            })
-            .show(ui, |plot_ui| {
-                let pointer = plot_ui.pointer_coordinate();
+        let mut first_resp: Option<egui_plot::PlotResponse<()>> = None;
+
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.vertical(|ui| {
                 if self.settings.show_weight {
-                    let ma = if self.settings.show_smoothed {
-                        Some(self.settings.ma_window)
-                    } else {
-                        None
-                    };
-                    for lw in weight_over_time_line(
-                        filtered,
-                        sel,
-                        self.settings.start_date,
-                        self.settings.end_date,
-                        self.settings.x_axis,
-                        self.settings.y_axis,
-                        self.settings.weight_unit,
-                        ma,
-                        self.settings.smoothing_method,
-                    ) {
-                        for p in &lw.points {
-                            all_points.push(*p);
-                        }
-                        plot_ui.line(lw.line);
-                        if self.settings.highlight_max {
-                            if let (Some(p), Some(label)) = (lw.max_point, lw.label.as_deref()) {
-                                let color = match label {
-                                    "Max Weight" => egui::Color32::RED,
-                                    "Max Volume" => egui::Color32::GREEN,
-                                    _ => egui::Color32::WHITE,
-                                };
-                                plot_ui.points(
-                                    Points::new(vec![p])
-                                        .shape(MarkerShape::Diamond)
-                                        .color(color)
-                                        .name(label),
-                                );
+                    let mut all_points: Vec<[f64; 2]> = Vec::new();
+                    let mut highlight: Option<[f64; 2]> = None;
+                    let resp = Plot::new("weight_plot")
+                        .x_axis_formatter(move |mark, _chars, _| {
+                            if x_axis == XAxis::Date {
+                                NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
+                                    .map(|d| d.format("%Y-%m-%d").to_string())
+                                    .unwrap_or_else(|| format!("{:.0}", mark.value))
+                            } else {
+                                format!("{:.0}", mark.value)
                             }
-                            if !lw.record_points.is_empty() {
-                                plot_ui.points(
-                                    Points::new(lw.record_points.clone())
-                                        .shape(MarkerShape::Asterisk)
-                                        .color(egui::Color32::LIGHT_GREEN)
-                                        .name("Record"),
-                                );
+                        })
+                        .show(ui, |plot_ui| {
+                            let pointer = plot_ui.pointer_coordinate();
+                            let ma = if self.settings.show_smoothed {
+                                Some(self.settings.ma_window)
+                            } else {
+                                None
+                            };
+                            for lw in weight_over_time_line(
+                                filtered,
+                                sel,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                                self.settings.x_axis,
+                                self.settings.y_axis,
+                                self.settings.weight_unit,
+                                ma,
+                                self.settings.smoothing_method,
+                            ) {
+                                for p in &lw.points {
+                                    all_points.push(*p);
+                                }
+                                plot_ui.line(lw.line);
+                                if self.settings.highlight_max {
+                                    if let (Some(p), Some(label)) =
+                                        (lw.max_point, lw.label.as_deref())
+                                    {
+                                        let color = match label {
+                                            "Max Weight" => egui::Color32::RED,
+                                            "Max Volume" => egui::Color32::GREEN,
+                                            _ => egui::Color32::WHITE,
+                                        };
+                                        plot_ui.points(
+                                            Points::new(vec![p])
+                                                .shape(MarkerShape::Diamond)
+                                                .color(color)
+                                                .name(label),
+                                        );
+                                    }
+                                    if !lw.record_points.is_empty() {
+                                        plot_ui.points(
+                                            Points::new(lw.record_points.clone())
+                                                .shape(MarkerShape::Asterisk)
+                                                .color(egui::Color32::LIGHT_GREEN)
+                                                .name("Record"),
+                                        );
+                                    }
+                                }
                             }
+                            if let Some(ptr) = pointer {
+                                if let Some(p) = nearest_point(ptr, &all_points) {
+                                    highlight = Some(p);
+                                    plot_ui.points(
+                                        Points::new(vec![p])
+                                            .color(egui::Color32::YELLOW)
+                                            .highlight(true)
+                                            .name("Hovered"),
+                                    );
+                                }
+                            }
+                        });
+
+                    if let Some(p) = highlight {
+                        if resp.response.hovered() {
+                            egui::show_tooltip_at_pointer(
+                                ctx,
+                                egui::Id::new("plot_tip_weight"),
+                                |ui| {
+                                    let x_text = match self.settings.x_axis {
+                                        XAxis::Date => {
+                                            NaiveDate::from_num_days_from_ce_opt(p[0] as i32)
+                                                .map(|d| d.format("%Y-%m-%d").to_string())
+                                                .unwrap_or_else(|| format!("{}", p[0] as i64))
+                                        }
+                                        XAxis::WorkoutIndex => format!("{}", p[0] as i64),
+                                    };
+                                    ui.label(format!("{x_text}: {:.2}", p[1]));
+                                },
+                            );
                         }
                     }
+
+                    first_resp.get_or_insert(resp);
                 }
+
                 if self.settings.show_est_1rm {
-                    let ma = if self.settings.show_smoothed {
-                        Some(self.settings.ma_window)
-                    } else {
-                        None
-                    };
-                    for lr in estimated_1rm_line(
-                        filtered,
-                        sel,
-                        self.settings.one_rm_formula,
-                        self.settings.start_date,
-                        self.settings.end_date,
-                        self.settings.x_axis,
-                        self.settings.weight_unit,
-                        ma,
-                        self.settings.smoothing_method,
-                    ) {
-                        for p in &lr.points {
-                            all_points.push(*p);
-                        }
-                        plot_ui.line(lr.line);
-                        if self.settings.highlight_max {
-                            if let (Some(p), Some(label)) = (lr.max_point, lr.label.as_deref()) {
-                                let (shape, color) = match label {
-                                    "Max 1RM" => (MarkerShape::Circle, egui::Color32::BLUE),
-                                    "Max Weight" => (MarkerShape::Diamond, egui::Color32::RED),
-                                    "Max Volume" => (MarkerShape::Diamond, egui::Color32::GREEN),
-                                    _ => (MarkerShape::Circle, egui::Color32::WHITE),
-                                };
-                                plot_ui.points(
-                                    Points::new(vec![p]).shape(shape).color(color).name(label),
-                                );
+                    let mut all_points: Vec<[f64; 2]> = Vec::new();
+                    let mut highlight: Option<[f64; 2]> = None;
+                    let resp = Plot::new("est_1rm_plot")
+                        .x_axis_formatter(move |mark, _chars, _| {
+                            if x_axis == XAxis::Date {
+                                NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
+                                    .map(|d| d.format("%Y-%m-%d").to_string())
+                                    .unwrap_or_else(|| format!("{:.0}", mark.value))
+                            } else {
+                                format!("{:.0}", mark.value)
                             }
-                            if !lr.record_points.is_empty() {
-                                plot_ui.points(
-                                    Points::new(lr.record_points.clone())
-                                        .shape(MarkerShape::Asterisk)
-                                        .color(egui::Color32::LIGHT_GREEN)
-                                        .name("Record"),
-                                );
+                        })
+                        .show(ui, |plot_ui| {
+                            let pointer = plot_ui.pointer_coordinate();
+                            let ma = if self.settings.show_smoothed {
+                                Some(self.settings.ma_window)
+                            } else {
+                                None
+                            };
+                            for lr in estimated_1rm_line(
+                                filtered,
+                                sel,
+                                self.settings.one_rm_formula,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                                self.settings.x_axis,
+                                self.settings.weight_unit,
+                                ma,
+                                self.settings.smoothing_method,
+                            ) {
+                                for p in &lr.points {
+                                    all_points.push(*p);
+                                }
+                                plot_ui.line(lr.line);
+                                if self.settings.highlight_max {
+                                    if let (Some(p), Some(label)) =
+                                        (lr.max_point, lr.label.as_deref())
+                                    {
+                                        let (shape, color) = match label {
+                                            "Max 1RM" => (MarkerShape::Circle, egui::Color32::BLUE),
+                                            "Max Weight" => {
+                                                (MarkerShape::Diamond, egui::Color32::RED)
+                                            }
+                                            "Max Volume" => {
+                                                (MarkerShape::Diamond, egui::Color32::GREEN)
+                                            }
+                                            _ => (MarkerShape::Circle, egui::Color32::WHITE),
+                                        };
+                                        plot_ui.points(
+                                            Points::new(vec![p])
+                                                .shape(shape)
+                                                .color(color)
+                                                .name(label),
+                                        );
+                                    }
+                                    if !lr.record_points.is_empty() {
+                                        plot_ui.points(
+                                            Points::new(lr.record_points.clone())
+                                                .shape(MarkerShape::Asterisk)
+                                                .color(egui::Color32::LIGHT_GREEN)
+                                                .name("Record"),
+                                        );
+                                    }
+                                }
                             }
+                            if let Some(ptr) = pointer {
+                                if let Some(p) = nearest_point(ptr, &all_points) {
+                                    highlight = Some(p);
+                                    plot_ui.points(
+                                        Points::new(vec![p])
+                                            .color(egui::Color32::YELLOW)
+                                            .highlight(true)
+                                            .name("Hovered"),
+                                    );
+                                }
+                            }
+                        });
+
+                    if let Some(p) = highlight {
+                        if resp.response.hovered() {
+                            egui::show_tooltip_at_pointer(
+                                ctx,
+                                egui::Id::new("plot_tip_1rm"),
+                                |ui| {
+                                    let x_text = match self.settings.x_axis {
+                                        XAxis::Date => {
+                                            NaiveDate::from_num_days_from_ce_opt(p[0] as i32)
+                                                .map(|d| d.format("%Y-%m-%d").to_string())
+                                                .unwrap_or_else(|| format!("{}", p[0] as i64))
+                                        }
+                                        XAxis::WorkoutIndex => format!("{}", p[0] as i64),
+                                    };
+                                    ui.label(format!("{x_text}: {:.2}", p[1]));
+                                },
+                            );
                         }
                     }
+
+                    first_resp.get_or_insert(resp);
                 }
+
                 if self.settings.show_volume {
-                    let ma = if self.settings.show_smoothed {
-                        Some(self.settings.ma_window)
-                    } else {
-                        None
-                    };
-                    for l in training_volume_line(
-                        filtered,
-                        self.settings.start_date,
-                        self.settings.end_date,
-                        self.settings.x_axis,
-                        self.settings.y_axis,
-                        self.settings.weight_unit,
-                        ma,
-                        self.settings.smoothing_method,
-                    ) {
-                        if let PlotGeometry::Points(pts) = l.geometry() {
-                            for p in pts {
-                                all_points.push([p.x, p.y]);
+                    let mut all_points: Vec<[f64; 2]> = Vec::new();
+                    let mut highlight: Option<[f64; 2]> = None;
+                    let resp = Plot::new("volume_plot")
+                        .x_axis_formatter(move |mark, _chars, _| {
+                            if x_axis == XAxis::Date {
+                                NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
+                                    .map(|d| d.format("%Y-%m-%d").to_string())
+                                    .unwrap_or_else(|| format!("{:.0}", mark.value))
+                            } else {
+                                format!("{:.0}", mark.value)
                             }
+                        })
+                        .show(ui, |plot_ui| {
+                            let pointer = plot_ui.pointer_coordinate();
+                            let ma = if self.settings.show_smoothed {
+                                Some(self.settings.ma_window)
+                            } else {
+                                None
+                            };
+                            for l in training_volume_line(
+                                filtered,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                                self.settings.x_axis,
+                                self.settings.y_axis,
+                                self.settings.weight_unit,
+                                ma,
+                                self.settings.smoothing_method,
+                            ) {
+                                if let PlotGeometry::Points(pts) = l.geometry() {
+                                    for p in pts {
+                                        all_points.push([p.x, p.y]);
+                                    }
+                                }
+                                plot_ui.line(l);
+                            }
+                            if self.settings.volume_aggregation != VolumeAggregation::Daily {
+                                let pts = aggregated_volume_points(
+                                    filtered,
+                                    self.settings.start_date,
+                                    self.settings.end_date,
+                                    self.settings.x_axis,
+                                    self.settings.y_axis,
+                                    self.settings.weight_unit,
+                                    self.settings.volume_aggregation,
+                                );
+                                let name = match self.settings.volume_aggregation {
+                                    VolumeAggregation::Weekly => "Weekly Volume",
+                                    VolumeAggregation::Monthly => "Monthly Volume",
+                                    VolumeAggregation::Daily => "Daily Volume",
+                                };
+                                for p in &pts {
+                                    all_points.push(*p);
+                                }
+                                plot_ui.line(Line::new(PlotPoints::from(pts)).name(name));
+                            }
+                            if let Some(ptr) = pointer {
+                                if let Some(p) = nearest_point(ptr, &all_points) {
+                                    highlight = Some(p);
+                                    plot_ui.points(
+                                        Points::new(vec![p])
+                                            .color(egui::Color32::YELLOW)
+                                            .highlight(true)
+                                            .name("Hovered"),
+                                    );
+                                }
+                            }
+                        });
+
+                    if let Some(p) = highlight {
+                        if resp.response.hovered() {
+                            egui::show_tooltip_at_pointer(
+                                ctx,
+                                egui::Id::new("plot_tip_vol"),
+                                |ui| {
+                                    let x_text = match self.settings.x_axis {
+                                        XAxis::Date => {
+                                            NaiveDate::from_num_days_from_ce_opt(p[0] as i32)
+                                                .map(|d| d.format("%Y-%m-%d").to_string())
+                                                .unwrap_or_else(|| format!("{}", p[0] as i64))
+                                        }
+                                        XAxis::WorkoutIndex => format!("{}", p[0] as i64),
+                                    };
+                                    ui.label(format!("{x_text}: {:.2}", p[1]));
+                                },
+                            );
                         }
-                        plot_ui.line(l);
                     }
-                    if self.settings.volume_aggregation != VolumeAggregation::Daily {
-                        let pts = aggregated_volume_points(
-                            filtered,
-                            self.settings.start_date,
-                            self.settings.end_date,
-                            self.settings.x_axis,
-                            self.settings.y_axis,
-                            self.settings.weight_unit,
-                            self.settings.volume_aggregation,
-                        );
-                        let name = match self.settings.volume_aggregation {
-                            VolumeAggregation::Weekly => "Weekly Volume",
-                            VolumeAggregation::Monthly => "Monthly Volume",
-                            VolumeAggregation::Daily => "Daily Volume",
-                        };
-                        for p in &pts {
-                            all_points.push(*p);
-                        }
-                        plot_ui.line(Line::new(PlotPoints::from(pts)).name(name));
-                    }
+
+                    first_resp.get_or_insert(resp);
                 }
+
                 if self.settings.show_exercise_volume && sel.len() == 1 {
-                    let ma = if self.settings.show_smoothed {
-                        Some(self.settings.ma_window)
-                    } else {
-                        None
-                    };
-                    for l in exercise_volume_line(
-                        filtered,
-                        &sel[0],
-                        self.settings.start_date,
-                        self.settings.end_date,
-                        self.settings.x_axis,
-                        self.settings.weight_unit,
-                        self.settings.volume_aggregation,
-                        ma,
-                    ) {
-                        if let PlotGeometry::Points(pts) = l.geometry() {
-                            for p in pts {
-                                all_points.push([p.x, p.y]);
+                    let resp = Plot::new("exercise_volume_plot")
+                        .x_axis_formatter(move |mark, _chars, _| {
+                            if x_axis == XAxis::Date {
+                                NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
+                                    .map(|d| d.format("%Y-%m-%d").to_string())
+                                    .unwrap_or_else(|| format!("{:.0}", mark.value))
+                            } else {
+                                format!("{:.0}", mark.value)
                             }
-                        }
-                        plot_ui.line(l);
-                    }
+                        })
+                        .show(ui, |plot_ui| {
+                            let ma = if self.settings.show_smoothed {
+                                Some(self.settings.ma_window)
+                            } else {
+                                None
+                            };
+                            for l in exercise_volume_line(
+                                filtered,
+                                &sel[0],
+                                self.settings.start_date,
+                                self.settings.end_date,
+                                self.settings.x_axis,
+                                self.settings.weight_unit,
+                                self.settings.volume_aggregation,
+                                ma,
+                            ) {
+                                plot_ui.line(l);
+                            }
+                        });
+
+                    first_resp.get_or_insert(resp);
                 }
+
                 if self.settings.show_body_part_volume {
-                    let ma = if self.settings.show_smoothed {
-                        Some(self.settings.ma_window)
-                    } else {
-                        None
-                    };
-                    for l in body_part_volume_line(
-                        filtered,
-                        self.settings.start_date,
-                        self.settings.end_date,
-                        self.settings.x_axis,
-                        self.settings.weight_unit,
-                        self.settings.body_part_volume_aggregation,
-                        ma,
-                    ) {
-                        if let PlotGeometry::Points(pts) = l.geometry() {
-                            for p in pts {
-                                all_points.push([p.x, p.y]);
+                    let resp = Plot::new("body_part_volume_plot")
+                        .x_axis_formatter(move |mark, _chars, _| {
+                            if x_axis == XAxis::Date {
+                                NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
+                                    .map(|d| d.format("%Y-%m-%d").to_string())
+                                    .unwrap_or_else(|| format!("{:.0}", mark.value))
+                            } else {
+                                format!("{:.0}", mark.value)
                             }
-                        }
-                        plot_ui.line(l);
-                    }
+                        })
+                        .show(ui, |plot_ui| {
+                            let ma = if self.settings.show_smoothed {
+                                Some(self.settings.ma_window)
+                            } else {
+                                None
+                            };
+                            for l in body_part_volume_line(
+                                filtered,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                                self.settings.x_axis,
+                                self.settings.weight_unit,
+                                self.settings.body_part_volume_aggregation,
+                                ma,
+                            ) {
+                                plot_ui.line(l);
+                            }
+                        });
+
+                    first_resp.get_or_insert(resp);
                 }
+
                 if self.settings.show_sets {
                     let ex_for_sets = if sel.len() == 1 {
                         Some(sel[0].as_str())
                     } else {
                         None
                     };
-                    plot_ui.bar_chart(sets_per_day_bar(
-                        filtered,
-                        ex_for_sets,
-                        self.settings.start_date,
-                        self.settings.end_date,
-                    ));
-                }
+                    let resp = Plot::new("sets_plot")
+                        .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
+                        .show(ui, |plot_ui| {
+                            plot_ui.bar_chart(sets_per_day_bar(
+                                filtered,
+                                ex_for_sets,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            ));
+                        });
 
-                if let Some(ptr) = pointer {
-                    if let Some(p) = nearest_point(ptr, &all_points) {
-                        highlight = Some(p);
-                        plot_ui.points(
-                            Points::new(vec![p])
-                                .color(egui::Color32::YELLOW)
-                                .highlight(true)
-                                .name("Hovered"),
-                        );
-                    }
+                    first_resp.get_or_insert(resp);
                 }
             });
+        });
 
-        if let Some(p) = highlight {
-            if plot_resp.response.hovered() {
-                egui::show_tooltip_at_pointer(ctx, egui::Id::new("plot_tip"), |ui| {
-                    let x_text = match self.settings.x_axis {
-                        XAxis::Date => NaiveDate::from_num_days_from_ce_opt(p[0] as i32)
-                            .map(|d| d.format("%Y-%m-%d").to_string())
-                            .unwrap_or_else(|| format!("{}", p[0] as i64)),
-                        XAxis::WorkoutIndex => format!("{}", p[0] as i64),
-                    };
-                    ui.label(format!("{x_text}: {:.2}", p[1]));
-                });
-            }
-        }
-
-        plot_resp
+        first_resp.unwrap_or_else(|| Plot::new("empty_plot").show(ui, |_ui| {}))
     }
 
     fn sync_settings_from_app(&mut self) {
