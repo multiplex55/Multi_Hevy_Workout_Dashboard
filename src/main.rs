@@ -50,6 +50,7 @@ struct RawWorkoutRow {
     set_index: Option<u32>,
     set_type: Option<String>,
     weight_lbs: Option<f32>,
+    weight_kg: Option<f32>,
     reps: Option<u32>,
     distance_miles: Option<f32>,
     duration_seconds: Option<f32>,
@@ -80,7 +81,10 @@ fn parse_workout_csv<R: std::io::Read>(reader: R) -> Result<Vec<WorkoutEntry>, c
                 chrono::NaiveDateTime::parse_from_str(&raw.start_time, "%d %b %Y, %H:%M")
             {
                 let date = dt.date().format("%Y-%m-%d").to_string();
-                let weight = raw.weight_lbs.unwrap_or(0.0);
+                let weight_lbs = raw
+                    .weight_lbs
+                    .or_else(|| raw.weight_kg.map(|kg| kg * 2.20462));
+                let weight = weight_lbs.unwrap_or(0.0);
                 let reps = raw.reps.unwrap_or(0);
                 entries.push(WorkoutEntry {
                     date,
@@ -337,23 +341,19 @@ impl MyApp {
                 SummarySort::Exercise => a.0.cmp(&b.0),
                 SummarySort::Sets => a.1.total_sets.cmp(&b.1.total_sets),
                 SummarySort::Reps => a.1.total_reps.cmp(&b.1.total_reps),
-                SummarySort::Volume => a
-                    .1
-                    .total_volume
-                    .partial_cmp(&b.1.total_volume)
-                    .unwrap_or(std::cmp::Ordering::Equal),
-                SummarySort::Best1Rm => a
-                    .1
-                    .best_est_1rm
-                    .unwrap_or(0.0)
-                    .partial_cmp(&b.1.best_est_1rm.unwrap_or(0.0))
-                    .unwrap_or(std::cmp::Ordering::Equal),
+                SummarySort::Volume => {
+                    a.1.total_volume
+                        .partial_cmp(&b.1.total_volume)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }
+                SummarySort::Best1Rm => {
+                    a.1.best_est_1rm
+                        .unwrap_or(0.0)
+                        .partial_cmp(&b.1.best_est_1rm.unwrap_or(0.0))
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }
             };
-            if ascending {
-                ord
-            } else {
-                ord.reverse()
-            }
+            if ascending { ord } else { ord.reverse() }
         });
     }
 
@@ -754,7 +754,11 @@ impl App for MyApp {
                                     &mut summary_sort_ascending,
                                 );
                                 ui.end_row();
-                                MyApp::sort_summary_stats(&mut stats, summary_sort, summary_sort_ascending);
+                                MyApp::sort_summary_stats(
+                                    &mut stats,
+                                    summary_sort,
+                                    summary_sort_ascending,
+                                );
                                 for (ex, s) in stats {
                                     ui.label(ex);
                                     ui.label(s.total_sets.to_string());
@@ -1234,7 +1238,11 @@ impl App for MyApp {
                         egui::ComboBox::from_id_source("body_part_filter_combo")
                             .selected_text(prev.as_deref().unwrap_or("All"))
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.settings.body_part_filter, None::<String>, "All");
+                                ui.selectable_value(
+                                    &mut self.settings.body_part_filter,
+                                    None::<String>,
+                                    "All",
+                                );
                                 for p in parts {
                                     ui.selectable_value(
                                         &mut self.settings.body_part_filter,
@@ -1347,6 +1355,21 @@ Week 12 - Lower - Strength,\"26 Jul 2025, 07:06\",\"26 Jul 2025, 08:11\",desc,\"
         assert_eq!(e.raw.exercise_title, "Lying Leg Curl (Machine)");
         assert_eq!(e.raw.weight_lbs, Some(100.0));
         assert_eq!(e.raw.reps, Some(10));
+    }
+
+    #[test]
+    fn parse_workout_csv_weight_kg() {
+        let data = "title,start_time,end_time,description,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_kg,reps,distance_miles,duration_seconds,rpe\n\
+Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
+        let entries = parse_workout_csv(data.as_bytes()).unwrap();
+        assert_eq!(entries.len(), 1);
+        let e = &entries[0];
+        assert_eq!(e.date, "2025-07-27");
+        assert_eq!(e.exercise, "Bench Press");
+        assert!((e.weight - 110.231).abs() < 0.01);
+        assert_eq!(e.reps, 8);
+        assert_eq!(e.raw.weight_lbs, None);
+        assert_eq!(e.raw.weight_kg, Some(50.0));
     }
 
     #[test]
