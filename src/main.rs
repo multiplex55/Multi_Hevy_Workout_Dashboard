@@ -105,6 +105,31 @@ fn parse_workout_csv<R: std::io::Read>(reader: R) -> Result<Vec<WorkoutEntry>, c
     Ok(entries)
 }
 
+fn parse_latest_pr_number(json: &str) -> Option<u64> {
+    #[derive(serde::Deserialize)]
+    struct Pr { number: u64 }
+    serde_json::from_str::<Vec<Pr>>(json).ok()?.into_iter().next().map(|p| p.number)
+}
+
+fn check_for_new_pr(repo: &str, last: Option<u64>) -> Option<u64> {
+    let url = format!("https://api.github.com/repos/{repo}/pulls?per_page=1");
+    let resp = ureq::get(&url)
+        .set("User-Agent", "multi-hevy")
+        .call();
+    if let Ok(r) = resp {
+        if r.status() == 200 {
+            if let Ok(text) = r.into_string() {
+                if let Some(num) = parse_latest_pr_number(&text) {
+                    if Some(num) != last {
+                        return Some(num);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct Settings {
     show_weight: bool,
@@ -133,6 +158,10 @@ struct Settings {
     #[serde(default)]
     auto_load_last: bool,
     last_file: Option<String>,
+    #[serde(default)]
+    check_prs: bool,
+    github_repo: Option<String>,
+    last_pr: Option<u64>,
     selected_exercises: Vec<String>,
     table_filter: String,
     sort_column: SortColumn,
@@ -198,6 +227,9 @@ impl Default for Settings {
             notes_filter: None,
             auto_load_last: true,
             last_file: None,
+            check_prs: false,
+            github_repo: None,
+            last_pr: None,
             selected_exercises: Vec::new(),
             table_filter: String::new(),
             sort_column: SortColumn::Date,
@@ -222,6 +254,7 @@ enum SummarySort {
     Sets,
     Reps,
     Volume,
+    MaxWeight,
     Best1Rm,
 }
 
@@ -244,6 +277,8 @@ struct MyApp {
     summary_sort_ascending: bool,
     capture_rect: Option<egui::Rect>,
     settings_dirty: bool,
+    pr_toast_start: Option<Instant>,
+    pr_message: Option<String>,
 }
 
 impl Default for MyApp {
@@ -267,6 +302,8 @@ impl Default for MyApp {
             summary_sort_ascending: true,
             capture_rect: None,
             settings_dirty: false,
+            pr_toast_start: None,
+            pr_message: None,
         };
 
         app.selected_exercises = app.settings.selected_exercises.clone();
@@ -306,6 +343,16 @@ impl Default for MyApp {
                             app.toast_start = Some(Instant::now());
                         }
                     }
+                }
+            }
+        }
+
+        if app.settings.check_prs {
+            if let Some(ref repo) = app.settings.github_repo {
+                if let Some(new_id) = check_for_new_pr(repo, app.settings.last_pr) {
+                    app.pr_message = Some(format!("New PR #{new_id} available"));
+                    app.pr_toast_start = Some(Instant::now());
+                    app.settings.last_pr = Some(new_id);
                 }
             }
         }
@@ -380,6 +427,12 @@ impl MyApp {
                 SummarySort::Volume => {
                     a.1.total_volume
                         .partial_cmp(&b.1.total_volume)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }
+                SummarySort::MaxWeight => {
+                    a.1.max_weight
+                        .unwrap_or(0.0)
+                        .partial_cmp(&b.1.max_weight.unwrap_or(0.0))
                         .unwrap_or(std::cmp::Ordering::Equal)
                 }
                 SummarySort::Best1Rm => {
@@ -512,6 +565,14 @@ impl MyApp {
                                         .name(label),
                                 );
                             }
+                            if !lw.record_points.is_empty() {
+                                plot_ui.points(
+                                    Points::new(lw.record_points.clone())
+                                        .shape(MarkerShape::Asterisk)
+                                        .color(egui::Color32::LIGHT_GREEN)
+                                        .name("Record"),
+                                );
+                            }
                         }
                     }
                 }
@@ -546,6 +607,14 @@ impl MyApp {
                                 };
                                 plot_ui.points(
                                     Points::new(vec![p]).shape(shape).color(color).name(label),
+                                );
+                            }
+                            if !lr.record_points.is_empty() {
+                                plot_ui.points(
+                                    Points::new(lr.record_points.clone())
+                                        .shape(MarkerShape::Asterisk)
+                                        .color(egui::Color32::LIGHT_GREEN)
+                                        .name("Record"),
                                 );
                             }
                         }
@@ -857,6 +926,13 @@ impl App for MyApp {
                                 );
                                 MyApp::summary_sort_button(
                                     ui,
+                                    "Max Weight",
+                                    SummarySort::MaxWeight,
+                                    &mut summary_sort,
+                                    &mut summary_sort_ascending,
+                                );
+                                MyApp::summary_sort_button(
+                                    ui,
                                     "Best 1RM",
                                     SummarySort::Best1Rm,
                                     &mut summary_sort,
@@ -874,6 +950,11 @@ impl App for MyApp {
                                     ui.label(s.total_reps.to_string());
                                     let f = self.settings.weight_unit.factor();
                                     ui.label(format!("{:.1}", s.total_volume * f));
+                                    if let Some(w) = s.max_weight {
+                                        ui.label(format!("{:.1}", w * f));
+                                    } else {
+                                        ui.label("-");
+                                    }
                                     if let Some(b) = s.best_est_1rm {
                                         ui.label(format!("{:.1}", b * f));
                                     } else {
@@ -1505,6 +1586,21 @@ impl App for MyApp {
             }
         }
 
+        if let Some(start) = self.pr_toast_start {
+            if start.elapsed() < Duration::from_secs(3) {
+                if let Some(ref msg) = self.pr_message {
+                    egui::Area::new(egui::Id::new("pr_toast"))
+                        .anchor(egui::Align2::LEFT_BOTTOM, [10.0, -10.0])
+                        .show(ctx, |ui| {
+                            ui.label(msg);
+                        });
+                }
+            } else {
+                self.pr_toast_start = None;
+                self.pr_message = None;
+            }
+        }
+
         if self.settings_dirty {
             self.settings.save();
             self.settings_dirty = false;
@@ -1555,6 +1651,9 @@ mod tests {
         s.show_body_part_volume = true;
         s.auto_load_last = false;
         s.last_file = Some("/tmp/test.csv".into());
+        s.check_prs = true;
+        s.github_repo = Some("user/repo".into());
+        s.last_pr = Some(5);
         s.selected_exercises = vec!["Bench".into()];
         s.table_filter = "bench".into();
         s.sort_column = SortColumn::Weight;
@@ -1664,6 +1763,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
                     total_reps: 10,
                     total_volume: 200.0,
                     best_est_1rm: Some(150.0),
+                    max_weight: Some(120.0),
                 },
             ),
             (
@@ -1673,6 +1773,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
                     total_reps: 5,
                     total_volume: 300.0,
                     best_est_1rm: Some(250.0),
+                    max_weight: Some(200.0),
                 },
             ),
             (
@@ -1682,6 +1783,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
                     total_reps: 15,
                     total_volume: 400.0,
                     best_est_1rm: Some(350.0),
+                    max_weight: Some(300.0),
                 },
             ),
         ];
@@ -1695,5 +1797,16 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
         assert_eq!(stats[0].0, "Deadlift");
         assert_eq!(stats[1].0, "Bench");
         assert_eq!(stats[2].0, "Squat");
+
+        MyApp::sort_summary_stats(&mut stats, SummarySort::MaxWeight, false);
+        assert_eq!(stats[0].0, "Deadlift");
+        assert_eq!(stats[1].0, "Squat");
+        assert_eq!(stats[2].0, "Bench");
+    }
+
+    #[test]
+    fn test_parse_latest_pr_number() {
+        let json = "[{\"number\": 42}]";
+        assert_eq!(parse_latest_pr_number(json), Some(42));
     }
 }
