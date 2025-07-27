@@ -15,8 +15,8 @@ use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
     OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
-    body_part_volume_line, estimated_1rm_line, sets_per_day_bar, training_volume_line,
-    unique_exercises, weight_over_time_line,
+    body_part_volume_line, estimated_1rm_line, exercise_volume_line, sets_per_day_bar,
+    training_volume_line, unique_exercises, weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -141,6 +141,8 @@ struct Settings {
     show_sets: bool,
     show_volume: bool,
     show_body_part_volume: bool,
+    #[serde(default)]
+    show_exercise_volume: bool,
     highlight_max: bool,
     show_smoothed: bool,
     ma_window: usize,
@@ -221,6 +223,7 @@ impl Default for Settings {
             show_sets: true,
             show_volume: false,
             show_body_part_volume: false,
+            show_exercise_volume: false,
             highlight_max: true,
             show_smoothed: false,
             smoothing_method: SmoothingMethod::SimpleMA,
@@ -722,6 +725,30 @@ impl MyApp {
                             all_points.push(*p);
                         }
                         plot_ui.line(Line::new(PlotPoints::from(pts)).name(name));
+                    }
+                }
+                if self.settings.show_exercise_volume && sel.len() == 1 {
+                    let ma = if self.settings.show_smoothed {
+                        Some(self.settings.ma_window)
+                    } else {
+                        None
+                    };
+                    for l in exercise_volume_line(
+                        filtered,
+                        &sel[0],
+                        self.settings.start_date,
+                        self.settings.end_date,
+                        self.settings.x_axis,
+                        self.settings.weight_unit,
+                        self.settings.volume_aggregation,
+                        ma,
+                    ) {
+                        if let PlotGeometry::Points(pts) = l.geometry() {
+                            for p in pts {
+                                all_points.push([p.x, p.y]);
+                            }
+                        }
+                        plot_ui.line(l);
                     }
                 }
                 if self.settings.show_body_part_volume {
@@ -1362,6 +1389,17 @@ impl App for MyApp {
                             ui.end_row();
 
                             if ui
+                                .checkbox(
+                                    &mut self.settings.show_exercise_volume,
+                                    "Show Exercise Volume",
+                                )
+                                .changed()
+                            {
+                                self.settings_dirty = true;
+                            }
+                            ui.end_row();
+
+                            if ui
                                 .checkbox(&mut self.settings.highlight_max, "Highlight maximums")
                                 .changed()
                             {
@@ -1875,6 +1913,7 @@ mod tests {
         s.notes_filter = Some("tempo".into());
         s.exclude_warmups = true;
         s.show_body_part_volume = true;
+        s.show_exercise_volume = true;
         s.body_part_volume_aggregation = VolumeAggregation::Monthly;
         s.auto_load_last = false;
         s.last_file = Some("/tmp/test.csv".into());

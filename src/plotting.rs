@@ -520,6 +520,36 @@ pub fn body_part_volume_line(
     lines
 }
 
+/// Create a line plot of training volume for a single exercise.
+///
+/// Volume is aggregated according to `agg`.
+pub fn exercise_volume_line(
+    entries: &[WorkoutEntry],
+    exercise: &str,
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+    x_axis: XAxis,
+    unit: WeightUnit,
+    agg: VolumeAggregation,
+    ma_window: Option<usize>,
+) -> Vec<Line> {
+    let filtered: Vec<WorkoutEntry> = entries
+        .iter()
+        .filter(|e| e.exercise == exercise)
+        .cloned()
+        .collect();
+    let points = aggregated_volume_points(&filtered, start, end, x_axis, YAxis::Volume, unit, agg);
+    let mut lines = Vec::new();
+    lines.push(Line::new(PlotPoints::from(points.clone())).name(exercise));
+    if let Some(w) = ma_window.filter(|w| *w > 1) {
+        if points.len() > 1 {
+            let ma_pts = moving_average_points(&points, w);
+            lines.push(Line::new(PlotPoints::from(ma_pts)).name(format!("{exercise} MA")));
+        }
+    }
+    lines
+}
+
 /// Return a sorted list of unique exercises found in the data.
 ///
 /// Only entries whose dates fall inside the optional range are inspected. The
@@ -910,6 +940,42 @@ mod tests {
         for (l, exp) in lines.into_iter().zip(expected) {
             assert_eq!(line_points(l), exp);
         }
+    }
+
+    #[test]
+    fn test_exercise_volume_line_weekly() {
+        let lines = exercise_volume_line(
+            &sample_entries(),
+            "Squat",
+            None,
+            None,
+            XAxis::Date,
+            WeightUnit::Lbs,
+            VolumeAggregation::Weekly,
+            None,
+        );
+        let d = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let expected = vec![[d.num_days_from_ce() as f64, 1025.0]];
+        let line = lines.into_iter().next().unwrap();
+        assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_exercise_volume_line_monthly() {
+        let lines = exercise_volume_line(
+            &sample_entries(),
+            "Bench",
+            None,
+            None,
+            XAxis::Date,
+            WeightUnit::Lbs,
+            VolumeAggregation::Monthly,
+            None,
+        );
+        let d = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let expected = vec![[d.num_days_from_ce() as f64, 400.0]];
+        let line = lines.into_iter().next().unwrap();
+        assert_eq!(line_points(line), expected);
     }
 
     #[test]
