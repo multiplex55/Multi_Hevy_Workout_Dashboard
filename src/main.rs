@@ -161,6 +161,10 @@ struct Settings {
     exercise_type_filter: Option<ExerciseType>,
     min_rpe: Option<f32>,
     max_rpe: Option<f32>,
+    min_weight: Option<f32>,
+    max_weight: Option<f32>,
+    min_reps: Option<u32>,
+    max_reps: Option<u32>,
     notes_filter: Option<String>,
     #[serde(default)]
     exclude_warmups: bool,
@@ -235,6 +239,10 @@ impl Default for Settings {
             exercise_type_filter: None,
             min_rpe: None,
             max_rpe: None,
+            min_weight: None,
+            max_weight: None,
+            min_reps: None,
+            max_reps: None,
             notes_filter: None,
             exclude_warmups: false,
             auto_load_last: true,
@@ -497,6 +505,26 @@ impl MyApp {
         }
         if let Some(max) = self.settings.max_rpe {
             if e.raw.rpe.map(|r| r > max).unwrap_or(true) {
+                return false;
+            }
+        }
+        if let Some(min_w) = self.settings.min_weight {
+            if e.weight < min_w {
+                return false;
+            }
+        }
+        if let Some(max_w) = self.settings.max_weight {
+            if e.weight > max_w {
+                return false;
+            }
+        }
+        if let Some(min_r) = self.settings.min_reps {
+            if e.reps < min_r {
+                return false;
+            }
+        }
+        if let Some(max_r) = self.settings.max_reps {
+            if e.reps > max_r {
                 return false;
             }
         }
@@ -1664,6 +1692,50 @@ impl App for MyApp {
                             self.settings_dirty = true;
                         }
                     });
+                    ui.horizontal(|ui| {
+                        ui.label("Min weight:");
+                        let mut mw = self
+                            .settings
+                            .min_weight
+                            .map(|v| format!("{:.1}", v))
+                            .unwrap_or_default();
+                        if ui.text_edit_singleline(&mut mw).changed() {
+                            self.settings.min_weight = mw.trim().parse().ok();
+                            self.settings_dirty = true;
+                        }
+                        ui.label("Max weight:");
+                        let mut mxw = self
+                            .settings
+                            .max_weight
+                            .map(|v| format!("{:.1}", v))
+                            .unwrap_or_default();
+                        if ui.text_edit_singleline(&mut mxw).changed() {
+                            self.settings.max_weight = mxw.trim().parse().ok();
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Min reps:");
+                        let mut mr = self
+                            .settings
+                            .min_reps
+                            .map(|v| v.to_string())
+                            .unwrap_or_default();
+                        if ui.text_edit_singleline(&mut mr).changed() {
+                            self.settings.min_reps = mr.trim().parse().ok();
+                            self.settings_dirty = true;
+                        }
+                        ui.label("Max reps:");
+                        let mut mxr = self
+                            .settings
+                            .max_reps
+                            .map(|v| v.to_string())
+                            .unwrap_or_default();
+                        if ui.text_edit_singleline(&mut mxr).changed() {
+                            self.settings.max_reps = mxr.trim().parse().ok();
+                            self.settings_dirty = true;
+                        }
+                    });
                 });
 
             if (self.settings.start_date != prev_start || self.settings.end_date != prev_end)
@@ -1752,6 +1824,10 @@ mod tests {
         s.exercise_type_filter = Some(ExerciseType::Compound);
         s.min_rpe = Some(6.0);
         s.max_rpe = Some(9.0);
+        s.min_weight = Some(135.0);
+        s.max_weight = Some(225.0);
+        s.min_reps = Some(3);
+        s.max_reps = Some(10);
         s.notes_filter = Some("tempo".into());
         s.exclude_warmups = true;
         s.show_body_part_volume = true;
@@ -1892,6 +1968,38 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
         let filtered = app.filtered_entries();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].weight, 100.0);
+    }
+
+    #[test]
+    fn weight_and_rep_filters() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Bench".into(),
+                weight: 200.0,
+                reps: 10,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let mut app = MyApp {
+            workouts: entries,
+            ..Default::default()
+        };
+        app.settings.min_weight = Some(150.0);
+        app.settings.max_weight = Some(250.0);
+        app.settings.min_reps = Some(8);
+        app.settings.max_reps = Some(12);
+        let filtered = app.filtered_entries();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].weight, 200.0);
+        assert_eq!(filtered[0].reps, 10);
     }
 
     #[test]
