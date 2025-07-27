@@ -90,10 +90,8 @@ pub fn weight_over_time_line(
         let mut idx = 0usize;
         let mut max_val = f64::NEG_INFINITY;
         let mut max_point = None;
-        let mut filtered: Vec<&WorkoutEntry> = entries
-            .iter()
-            .filter(|e| e.exercise == *exercise)
-            .collect();
+        let mut filtered: Vec<&WorkoutEntry> =
+            entries.iter().filter(|e| e.exercise == *exercise).collect();
         if x_axis == XAxis::Date {
             filtered.sort_by_key(|e| NaiveDate::parse_from_str(&e.date, "%Y-%m-%d").ok());
         }
@@ -180,10 +178,8 @@ pub fn estimated_1rm_line(
         let mut idx = 0usize;
         let mut max_est = f64::NEG_INFINITY;
         let mut max_point = None;
-        let mut filtered: Vec<&WorkoutEntry> = entries
-            .iter()
-            .filter(|e| e.exercise == *exercise)
-            .collect();
+        let mut filtered: Vec<&WorkoutEntry> =
+            entries.iter().filter(|e| e.exercise == *exercise).collect();
         if x_axis == XAxis::Date {
             filtered.sort_by_key(|e| NaiveDate::parse_from_str(&e.date, "%Y-%m-%d").ok());
         }
@@ -458,13 +454,15 @@ pub fn training_volume_line(
 /// Create a line plot of training volume per primary body part.
 ///
 /// Each body part is plotted separately. Entries outside the optional date
-/// range or without a known body part are skipped.
+/// range or without a known body part are skipped. Volume can be aggregated
+/// daily, weekly or monthly.
 pub fn body_part_volume_line(
     entries: &[WorkoutEntry],
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
     x_axis: XAxis,
     unit: WeightUnit,
+    agg: VolumeAggregation,
     ma_window: Option<usize>,
 ) -> Vec<Line> {
     use std::collections::BTreeMap;
@@ -476,9 +474,21 @@ pub fn body_part_volume_line(
         ) {
             if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                 let f = unit.factor() as f64;
+                let key_date = match agg {
+                    VolumeAggregation::Daily => d,
+                    VolumeAggregation::Weekly => NaiveDate::from_isoywd_opt(
+                        d.iso_week().year(),
+                        d.iso_week().week(),
+                        chrono::Weekday::Mon,
+                    )
+                    .unwrap_or(d),
+                    VolumeAggregation::Monthly => {
+                        NaiveDate::from_ymd_opt(d.year(), d.month(), 1).unwrap_or(d)
+                    }
+                };
                 *map.entry(part.to_string())
                     .or_default()
-                    .entry(d)
+                    .entry(key_date)
                     .or_insert(0.0) += e.weight as f64 * f * e.reps as f64;
             }
         }
@@ -858,6 +868,48 @@ mod tests {
         // EMA smoothing of [0.0,900], [1.0,525] with alpha=2/(2+1)=0.666...
         let expected = vec![[0.0, 900.0], [1.0, 650.0]];
         assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_body_part_volume_line_weekly() {
+        let lines = body_part_volume_line(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::Date,
+            WeightUnit::Lbs,
+            VolumeAggregation::Weekly,
+            None,
+        );
+        let d = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let expected = vec![
+            vec![[d.num_days_from_ce() as f64, 400.0]],
+            vec![[d.num_days_from_ce() as f64, 1025.0]],
+        ];
+        for (l, exp) in lines.into_iter().zip(expected) {
+            assert_eq!(line_points(l), exp);
+        }
+    }
+
+    #[test]
+    fn test_body_part_volume_line_monthly() {
+        let lines = body_part_volume_line(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::Date,
+            WeightUnit::Lbs,
+            VolumeAggregation::Monthly,
+            None,
+        );
+        let d = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let expected = vec![
+            vec![[d.num_days_from_ce() as f64, 400.0]],
+            vec![[d.num_days_from_ce() as f64, 1025.0]],
+        ];
+        for (l, exp) in lines.into_iter().zip(expected) {
+            assert_eq!(line_points(l), exp);
+        }
     }
 
     #[test]
