@@ -37,6 +37,10 @@ impl WorkoutEntry {
     fn body_part(&self) -> Option<&'static str> {
         body_parts::body_part_for(&self.exercise)
     }
+
+    fn exercise_type(&self) -> Option<ExerciseType> {
+        body_parts::info_for(&self.exercise).map(|i| i.kind)
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize, Default)]
@@ -403,7 +407,7 @@ impl MyApp {
             }
         }
         if let Some(kind) = self.settings.exercise_type_filter {
-            match body_parts::info_for(&e.exercise).map(|i| i.kind) {
+            match e.exercise_type() {
                 Some(k) if k == kind => {}
                 _ => return false,
             }
@@ -1333,13 +1337,13 @@ impl App for MyApp {
                         egui::ComboBox::from_id_source("exercise_type_filter_combo")
                             .selected_text(match prev {
                                 Some(k) => format!("{:?}", k),
-                                None => "All".into(),
+                                None => "Any".into(),
                             })
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(
                                     &mut self.settings.exercise_type_filter,
                                     None::<ExerciseType>,
-                                    "All",
+                                    "Any",
                                 );
                                 for k in body_parts::ALL_EXERCISE_TYPES {
                                     ui.selectable_value(
