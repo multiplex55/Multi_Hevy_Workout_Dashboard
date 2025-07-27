@@ -1,7 +1,7 @@
 use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui_extras::DatePickerButton;
-use egui_plot::{MarkerShape, Plot, Points};
+use egui_plot::{MarkerShape, Plot, PlotGeometry, PlotItem, Points};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -328,6 +328,14 @@ impl MyApp {
     }
 }
 
+fn nearest_point(pointer: egui_plot::PlotPoint, points: &[[f64; 2]]) -> Option<[f64; 2]> {
+    points.iter().copied().min_by(|a, b| {
+        let da = (a[0] - pointer.x).powi(2) + (a[1] - pointer.y).powi(2);
+        let db = (b[0] - pointer.x).powi(2) + (b[1] - pointer.y).powi(2);
+        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
 impl App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         // Handle screenshot results
@@ -594,7 +602,10 @@ impl App for MyApp {
 
                 if !self.selected_exercises.is_empty() {
                     let sel: Vec<String> = self.selected_exercises.clone();
+                    let mut all_points: Vec<[f64; 2]> = Vec::new();
+                    let mut highlight: Option<[f64; 2]> = None;
                     let plot_resp = Plot::new("exercise_plot").show(ui, |plot_ui| {
+                        let pointer = plot_ui.pointer_coordinate();
                         if self.settings.show_weight {
                             let ma = if self.settings.show_smoothed {
                                 Some(self.settings.ma_window)
@@ -611,6 +622,9 @@ impl App for MyApp {
                                 self.settings.weight_unit,
                                 ma,
                             ) {
+                                for p in &lw.points {
+                                    all_points.push(*p);
+                                }
                                 plot_ui.line(lw.line);
                                 if self.settings.highlight_max {
                                     if let Some(p) = lw.max_point {
@@ -640,6 +654,9 @@ impl App for MyApp {
                                 self.settings.weight_unit,
                                 ma,
                             ) {
+                                for p in &lr.points {
+                                    all_points.push(*p);
+                                }
                                 plot_ui.line(lr.line);
                                 if self.settings.highlight_max {
                                     if let Some(p) = lr.max_point {
@@ -668,6 +685,11 @@ impl App for MyApp {
                                 self.settings.weight_unit,
                                 ma,
                             ) {
+                                if let PlotGeometry::Points(pts) = l.geometry() {
+                                    for p in pts {
+                                        all_points.push([p.x, p.y]);
+                                    }
+                                }
                                 plot_ui.line(l);
                             }
                         }
@@ -684,10 +706,36 @@ impl App for MyApp {
                                 self.settings.end_date,
                             ));
                         }
+
+                        if let Some(ptr) = pointer {
+                            if let Some(p) = nearest_point(ptr, &all_points) {
+                                highlight = Some(p);
+                                plot_ui.points(
+                                    Points::new(vec![p])
+                                        .color(egui::Color32::YELLOW)
+                                        .highlight(true)
+                                        .name("Hovered"),
+                                );
+                            }
+                        }
                     });
                     if ui.button("Save Plot").clicked() {
                         self.capture_rect = Some(plot_resp.response.rect);
                         ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
+                    }
+
+                    if let Some(p) = highlight {
+                        if plot_resp.response.hovered() {
+                            egui::show_tooltip_at_pointer(ctx, egui::Id::new("plot_tip"), |ui| {
+                                let x_text = match self.settings.x_axis {
+                                    XAxis::Date => NaiveDate::from_num_days_from_ce(p[0] as i32)
+                                        .format("%Y-%m-%d")
+                                        .to_string(),
+                                    XAxis::WorkoutIndex => format!("{}", p[0] as i64),
+                                };
+                                ui.label(format!("{x_text}: {:.2}", p[1]));
+                            });
+                        }
                     }
                 }
             }
