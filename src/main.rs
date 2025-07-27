@@ -4,6 +4,7 @@ use egui_extras::DatePickerButton;
 use egui_plot::{Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::File;
 use std::time::{Duration, Instant};
 
@@ -74,6 +75,15 @@ impl WeightUnit {
         match self {
             WeightUnit::Lbs => 1.0,
             WeightUnit::Kg => 0.453_592,
+        }
+    }
+}
+
+impl std::fmt::Display for WeightUnit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WeightUnit::Lbs => write!(f, "lbs"),
+            WeightUnit::Kg => write!(f, "kg"),
         }
     }
 }
@@ -224,6 +234,9 @@ struct MyApp {
     table_filter: String,
     last_loaded: Option<String>,
     toast_start: Option<Instant>,
+    toast_msg: Option<String>,
+    record_weights: HashMap<String, f32>,
+    record_1rms: HashMap<String, f32>,
     settings: Settings,
     show_settings: bool,
     show_entries: bool,
@@ -246,6 +259,9 @@ impl Default for MyApp {
             table_filter: String::new(),
             last_loaded: None,
             toast_start: None,
+            toast_msg: None,
+            record_weights: HashMap::new(),
+            record_1rms: HashMap::new(),
             settings: Settings::load(),
             show_settings: false,
             show_entries: false,
@@ -259,8 +275,8 @@ impl Default for MyApp {
         };
 
         if app.settings.auto_load_last {
-            if let Some(ref path) = app.settings.last_file {
-                let p = std::path::Path::new(path);
+            if let Some(path) = app.settings.last_file.clone() {
+                let p = std::path::Path::new(&path);
                 if p.exists() {
                     if let Ok(file) = File::open(p) {
                         if let Ok(entries) = parse_workout_csv(file) {
@@ -270,6 +286,7 @@ impl Default for MyApp {
                                 app.settings.start_date,
                                 app.settings.end_date,
                             );
+                            app.update_records();
                             if app.selected_exercises.is_empty() {
                                 let filtered = app.filtered_entries();
                                 if let Some(first) = unique_exercises(
@@ -285,6 +302,10 @@ impl Default for MyApp {
                             }
                             app.last_loaded =
                                 p.file_name().map(|f| f.to_string_lossy().to_string());
+                            app.toast_msg = Some(format_load_message(
+                                app.workouts.len(),
+                                app.last_loaded.as_deref().unwrap_or("file"),
+                            ));
                             app.toast_start = Some(Instant::now());
                         }
                     }
@@ -435,6 +456,39 @@ impl MyApp {
             .iter()
             .filter(|e| self.entry_matches_filters(e))
             .collect()
+    }
+
+    fn update_records(&mut self) {
+        let stats_map = analysis::aggregate_exercise_stats(
+            &self.workouts,
+            self.settings.one_rm_formula,
+            self.settings.start_date,
+            self.settings.end_date,
+        );
+        for (ex, st) in stats_map {
+            if let Some(w) = st.best_weight {
+                let entry = self.record_weights.entry(ex.clone()).or_insert(0.0);
+                if w > *entry {
+                    *entry = w;
+                    self.toast_msg = Some(format!(
+                        "New PR for {ex}: {:.1} {}",
+                        w, self.settings.weight_unit
+                    ));
+                    self.toast_start = Some(Instant::now());
+                }
+            }
+            if let Some(est) = st.best_est_1rm {
+                let entry = self.record_1rms.entry(ex.clone()).or_insert(0.0);
+                if est > *entry {
+                    *entry = est;
+                    self.toast_msg = Some(format!(
+                        "New 1RM PR for {ex}: {:.1} {}",
+                        est, self.settings.weight_unit
+                    ));
+                    self.toast_start = Some(Instant::now());
+                }
+            }
+        }
     }
 
     fn draw_plot(
@@ -885,6 +939,7 @@ impl App for MyApp {
                             self.settings.start_date,
                             self.settings.end_date,
                         );
+                        self.update_records();
                         if self.selected_exercises.is_empty() {
                             let filtered = self.filtered_entries();
                             if let Some(first) = unique_exercises(
@@ -899,6 +954,10 @@ impl App for MyApp {
                             }
                         }
                         self.last_loaded = Some(filename);
+                        self.toast_msg = Some(format_load_message(
+                            self.workouts.len(),
+                            self.last_loaded.as_deref().unwrap_or("file"),
+                        ));
                         self.toast_start = Some(Instant::now());
                         self.settings.last_file = Some(path.display().to_string());
                         self.settings_dirty = true;
@@ -1461,16 +1520,16 @@ impl App for MyApp {
                 });
         }
 
-        if let Some(start) = self.toast_start {
+        if let (Some(start), Some(msg)) = (self.toast_start, &self.toast_msg) {
             if start.elapsed() < Duration::from_secs(3) {
-                let file = self.last_loaded.as_deref().unwrap_or("file");
-                egui::Area::new(egui::Id::new("load_toast"))
+                egui::Area::new(egui::Id::new("toast"))
                     .anchor(egui::Align2::RIGHT_TOP, [-10.0, 10.0])
                     .show(ctx, |ui| {
-                        ui.label(format_load_message(self.workouts.len(), file));
+                        ui.label(msg);
                     });
             } else {
                 self.toast_start = None;
+                self.toast_msg = None;
             }
         }
 
