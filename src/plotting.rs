@@ -1,6 +1,7 @@
 use chrono::{Datelike, NaiveDate};
 use egui_plot::{Bar, BarChart, Line, PlotPoints};
 
+use crate::body_parts::body_part_for;
 use crate::{WeightUnit, WorkoutEntry};
 use serde::{Deserialize, Serialize};
 
@@ -272,6 +273,61 @@ pub fn training_volume_line(
         if points.len() > 1 {
             let ma_pts = moving_average_points(&points, w);
             lines.push(Line::new(PlotPoints::from(ma_pts)).name(format!("Volume MA")));
+        }
+    }
+    lines
+}
+
+/// Create a line plot of training volume per primary body part.
+///
+/// Each body part is plotted separately. Entries outside the optional date
+/// range or without a known body part are skipped.
+pub fn body_part_volume_line(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+    x_axis: XAxis,
+    unit: WeightUnit,
+    ma_window: Option<usize>,
+) -> Vec<Line> {
+    use std::collections::BTreeMap;
+    let mut map: BTreeMap<String, BTreeMap<NaiveDate, f64>> = BTreeMap::new();
+    for e in entries {
+        if let (Some(part), Ok(d)) = (
+            body_part_for(&e.exercise),
+            NaiveDate::parse_from_str(&e.date, "%Y-%m-%d"),
+        ) {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let f = unit.factor() as f64;
+                *map.entry(part.to_string())
+                    .or_default()
+                    .entry(d)
+                    .or_insert(0.0) += e.weight as f64 * f * e.reps as f64;
+            }
+        }
+    }
+
+    let mut lines = Vec::new();
+    for (part, day_map) in map {
+        let mut idx = 0usize;
+        let mut points = Vec::new();
+        for (d, vol) in day_map {
+            let x = match x_axis {
+                XAxis::Date => d.num_days_from_ce() as f64,
+                XAxis::WorkoutIndex => {
+                    let v = idx as f64;
+                    idx += 1;
+                    v
+                }
+            };
+            points.push([x, vol]);
+        }
+        lines.push(Line::new(PlotPoints::from(points.clone())).name(part.clone()));
+        if let Some(w) = ma_window.filter(|w| *w > 1) {
+            if points.len() > 1 {
+                let ma_pts = moving_average_points(&points, w);
+                lines.push(Line::new(PlotPoints::from(ma_pts)).name(format!("{part} MA")));
+            }
         }
     }
     lines

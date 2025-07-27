@@ -1,5 +1,6 @@
 // Module for analyzing workout data
 use crate::WorkoutEntry;
+use crate::body_parts::body_part_for;
 use crate::plotting::OneRmFormula;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -64,6 +65,27 @@ pub fn aggregate_exercise_stats(
         }
     }
 
+    map
+}
+
+/// Count how many sets target each primary body part.
+///
+/// Entries outside the optional date range are ignored. Exercises are mapped
+/// to a body part via [`body_part_for`]. The resulting map uses the body part
+/// name as the key with the number of sets as the value.
+pub fn aggregate_sets_by_body_part(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> HashMap<String, usize> {
+    let mut map: HashMap<String, usize> = HashMap::new();
+    for e in entries {
+        if let (Some(bp), Some(d)) = (body_part_for(&e.exercise), parse_date(&e.date)) {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                *map.entry(bp.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
     map
 }
 
@@ -260,5 +282,24 @@ mod tests {
         let start = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").ok();
         let stats = compute_stats(&entries, start, None);
         assert_eq!(stats.total_workouts, 2);
+    }
+
+    #[test]
+    fn test_aggregate_sets_by_body_part() {
+        let entries = sample_entries();
+        let map = aggregate_sets_by_body_part(&entries, None, None);
+        assert_eq!(map.get("Quads"), Some(&2));
+        assert_eq!(map.get("Chest"), Some(&1));
+        assert_eq!(map.get("Back"), Some(&1));
+    }
+
+    #[test]
+    fn test_aggregate_sets_by_body_part_range() {
+        let entries = sample_entries();
+        let start = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").ok();
+        let map = aggregate_sets_by_body_part(&entries, start, None);
+        assert_eq!(map.get("Quads"), Some(&1));
+        assert_eq!(map.get("Back"), Some(&1));
+        assert!(map.get("Chest").is_none());
     }
 }
