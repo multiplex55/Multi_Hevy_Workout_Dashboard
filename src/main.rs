@@ -792,6 +792,7 @@ impl MyApp {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
                     let resp = Plot::new("est_1rm_plot")
+                        .height(200.0)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -895,6 +896,7 @@ impl MyApp {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
                     let resp = Plot::new("volume_plot")
+                        .height(200.0)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1000,6 +1002,7 @@ impl MyApp {
 
                 if self.settings.show_exercise_volume && sel.len() == 1 {
                     let resp = Plot::new("exercise_volume_plot")
+                        .height(200.0)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1035,6 +1038,7 @@ impl MyApp {
 
                 if self.settings.show_body_part_volume {
                     let resp = Plot::new("body_part_volume_plot")
+                        .height(200.0)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1074,6 +1078,7 @@ impl MyApp {
                         None
                     };
                     let resp = Plot::new("sets_plot")
+                        .height(200.0)
                         .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
@@ -1437,13 +1442,13 @@ impl App for MyApp {
                 });
                 ui.horizontal(|ui| {
                     ui.label("Exercises:");
-                    let resp = egui::ComboBox::from_id_source("exercise_combo")
-                        .selected_text(if self.selected_exercises.is_empty() {
+                    let resp = ui.menu_button(
+                        if self.selected_exercises.is_empty() {
                             String::new()
                         } else {
                             self.selected_exercises.join(", ")
-                        })
-                        .show_ui(ui, |ui| {
+                        },
+                        |ui| {
                             for ex in &exercises {
                                 let mut sel = self.selected_exercises.contains(ex);
                                 if ui.checkbox(&mut sel, ex).changed() {
@@ -1457,7 +1462,8 @@ impl App for MyApp {
                                     self.update_selected_stats();
                                 }
                             }
-                        });
+                        },
+                    );
                     let _ = ctx.input(|i| i.pointer.interact_pos());
                     resp.response.context_menu(|ui| {
                         if ui.button("Clear selection").clicked() {
