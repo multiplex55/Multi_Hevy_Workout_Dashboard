@@ -291,6 +291,8 @@ struct MyApp {
     workouts: Vec<WorkoutEntry>,
     stats: BasicStats,
     selected_exercises: Vec<String>,
+    set_types: Vec<String>,
+    superset_ids: Vec<String>,
     search_query: String,
     table_filter: String,
     last_loaded: Option<String>,
@@ -321,6 +323,8 @@ impl Default for MyApp {
             workouts: Vec::new(),
             stats: BasicStats::default(),
             selected_exercises: Vec::new(),
+            set_types: Vec::new(),
+            superset_ids: Vec::new(),
             search_query: String::new(),
             table_filter: String::new(),
             last_loaded: None,
@@ -350,8 +354,8 @@ impl Default for MyApp {
         app.summary_sort_ascending = app.settings.summary_sort_ascending;
 
         if app.settings.auto_load_last {
-            if let Some(ref path) = app.settings.last_file {
-                let p = std::path::Path::new(path);
+            if let Some(path) = app.settings.last_file.clone() {
+                let p = std::path::Path::new(&path);
                 if p.exists() {
                     if let Ok(file) = File::open(p) {
                         if let Ok(entries) = parse_workout_csv(file) {
@@ -361,6 +365,7 @@ impl Default for MyApp {
                                 app.settings.start_date,
                                 app.settings.end_date,
                             );
+                            app.update_filter_values();
                             app.last_loaded =
                                 p.file_name().map(|f| f.to_string_lossy().to_string());
                             app.toast_start = Some(Instant::now());
@@ -379,6 +384,8 @@ impl Default for MyApp {
                 }
             }
         }
+
+        app.update_filter_values();
 
         app
     }
@@ -475,6 +482,11 @@ impl MyApp {
             Some(t) if t < 0.0 => format!("\u{2013}{:.1}", (t * factor).abs()),
             _ => "\u{2013}".to_owned(),
         }
+    }
+
+    fn update_filter_values(&mut self) {
+        self.set_types = analysis::unique_set_types(&self.workouts);
+        self.superset_ids = analysis::unique_superset_ids(&self.workouts);
     }
 
     fn entry_matches_filters(&self, e: &WorkoutEntry) -> bool {
@@ -1282,6 +1294,7 @@ impl App for MyApp {
                             self.settings.start_date,
                             self.settings.end_date,
                         );
+                        self.update_filter_values();
                         self.last_loaded = Some(filename);
                         self.toast_start = Some(Instant::now());
                         self.settings.last_file = Some(path.display().to_string());
@@ -1922,35 +1935,47 @@ impl App for MyApp {
                                     .show(ui, |ui| {
                                         ui.horizontal(|ui| {
                                             ui.label("Set type filter:");
-                                            let mut st = self
-                                                .settings
-                                                .set_type_filter
-                                                .clone()
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut st).changed() {
-                                                self.settings.set_type_filter =
-                                                    if st.trim().is_empty() {
-                                                        None
-                                                    } else {
-                                                        Some(st)
-                                                    };
+                                            let prev = self.settings.set_type_filter.clone();
+                                            egui::ComboBox::from_id_source("set_type_filter_combo")
+                                                .selected_text(prev.as_deref().unwrap_or("All"))
+                                                .show_ui(ui, |ui| {
+                                                    ui.selectable_value(
+                                                        &mut self.settings.set_type_filter,
+                                                        None::<String>,
+                                                        "All",
+                                                    );
+                                                    for st in &self.set_types {
+                                                        ui.selectable_value(
+                                                            &mut self.settings.set_type_filter,
+                                                            Some(st.clone()),
+                                                            st,
+                                                        );
+                                                    }
+                                                });
+                                            if prev != self.settings.set_type_filter {
                                                 self.settings_dirty = true;
                                             }
                                         });
                                         ui.horizontal(|ui| {
                                             ui.label("Superset id:");
-                                            let mut ss = self
-                                                .settings
-                                                .superset_filter
-                                                .clone()
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut ss).changed() {
-                                                self.settings.superset_filter =
-                                                    if ss.trim().is_empty() {
-                                                        None
-                                                    } else {
-                                                        Some(ss)
-                                                    };
+                                            let prev = self.settings.superset_filter.clone();
+                                            egui::ComboBox::from_id_source("superset_filter_combo")
+                                                .selected_text(prev.as_deref().unwrap_or("All"))
+                                                .show_ui(ui, |ui| {
+                                                    ui.selectable_value(
+                                                        &mut self.settings.superset_filter,
+                                                        None::<String>,
+                                                        "All",
+                                                    );
+                                                    for id in &self.superset_ids {
+                                                        ui.selectable_value(
+                                                            &mut self.settings.superset_filter,
+                                                            Some(id.clone()),
+                                                            id,
+                                                        );
+                                                    }
+                                                });
+                                            if prev != self.settings.superset_filter {
                                                 self.settings_dirty = true;
                                             }
                                         });

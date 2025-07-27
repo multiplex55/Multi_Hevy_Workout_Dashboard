@@ -4,7 +4,7 @@ use crate::body_parts::body_part_for;
 use crate::plotting::OneRmFormula;
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 /// Summary statistics about a workout log.
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -227,6 +227,28 @@ pub fn compute_stats(
     }
 }
 
+/// Return a sorted list of unique set types found in the data.
+pub fn unique_set_types(entries: &[WorkoutEntry]) -> Vec<String> {
+    let mut set = BTreeSet::new();
+    for e in entries {
+        if let Some(ref t) = e.raw.set_type {
+            set.insert(t.clone());
+        }
+    }
+    set.into_iter().collect()
+}
+
+/// Return a sorted list of unique superset ids found in the data.
+pub fn unique_superset_ids(entries: &[WorkoutEntry]) -> Vec<String> {
+    let mut set = BTreeSet::new();
+    for e in entries {
+        if let Some(ref id) = e.raw.superset_id {
+            set.insert(id.clone());
+        }
+    }
+    set.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,5 +404,31 @@ mod tests {
         assert_eq!(map.get("Quads"), Some(&1));
         assert_eq!(map.get("Back"), Some(&1));
         assert!(map.get("Chest").is_none());
+    }
+
+    #[test]
+    fn test_unique_set_types_and_superset_ids() {
+        let mut entries = sample_entries();
+        entries[0].raw.set_type = Some("warmup".into());
+        entries[1].raw.set_type = Some("working".into());
+        entries[2].raw.set_type = Some("working".into());
+        entries[0].raw.superset_id = Some("A".into());
+        entries[3].raw.superset_id = Some("B".into());
+        let types = unique_set_types(&entries);
+        assert_eq!(
+            types,
+            vec!["warmup", "working"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+        );
+        let ids = unique_superset_ids(&entries);
+        assert_eq!(
+            ids,
+            vec!["A", "B"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+        );
     }
 }
