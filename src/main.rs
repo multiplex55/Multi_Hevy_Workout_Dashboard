@@ -1028,6 +1028,19 @@ impl App for MyApp {
 
             if !self.workouts.is_empty() {
                 ui.heading("Workout Statistics");
+                if self.settings.start_date.is_some() || self.settings.end_date.is_some() {
+                    let start = self
+                        .settings
+                        .start_date
+                        .map(|d| d.format("%Y-%m-%d").to_string())
+                        .unwrap_or_else(|| "start".into());
+                    let end = self
+                        .settings
+                        .end_date
+                        .map(|d| d.format("%Y-%m-%d").to_string())
+                        .unwrap_or_else(|| "end".into());
+                    ui.label(format!("Range: {start} - {end}"));
+                }
                 ui.label(format!("Total workouts: {}", self.stats.total_workouts));
                 ui.label(format!(
                     "Avg sets/workout: {:.2}",
@@ -1250,6 +1263,8 @@ impl App for MyApp {
         }
 
         if self.show_settings {
+            let prev_start = self.settings.start_date;
+            let prev_end = self.settings.end_date;
             egui::Window::new("Settings")
                 .open(&mut self.show_settings)
                 .show(ctx, |ui| {
@@ -1350,24 +1365,10 @@ impl App for MyApp {
                         {
                             self.settings.start_date = Some(start);
                             self.settings_dirty = true;
-                            if !self.workouts.is_empty() {
-                                self.stats = compute_stats(
-                                    &self.workouts,
-                                    self.settings.start_date,
-                                    self.settings.end_date,
-                                );
-                            }
                         }
                         if self.settings.start_date.is_some() && ui.button("Clear").clicked() {
                             self.settings.start_date = None;
                             self.settings_dirty = true;
-                            if !self.workouts.is_empty() {
-                                self.stats = compute_stats(
-                                    &self.workouts,
-                                    self.settings.start_date,
-                                    self.settings.end_date,
-                                );
-                            }
                         }
                     });
                     ui.horizontal(|ui| {
@@ -1382,24 +1383,10 @@ impl App for MyApp {
                         {
                             self.settings.end_date = Some(end);
                             self.settings_dirty = true;
-                            if !self.workouts.is_empty() {
-                                self.stats = compute_stats(
-                                    &self.workouts,
-                                    self.settings.start_date,
-                                    self.settings.end_date,
-                                );
-                            }
                         }
                         if self.settings.end_date.is_some() && ui.button("Clear").clicked() {
                             self.settings.end_date = None;
                             self.settings_dirty = true;
-                            if !self.workouts.is_empty() {
-                                self.stats = compute_stats(
-                                    &self.workouts,
-                                    self.settings.start_date,
-                                    self.settings.end_date,
-                                );
-                            }
                         }
                     });
                     ui.horizontal(|ui| {
@@ -1624,6 +1611,16 @@ impl App for MyApp {
                         }
                     });
                 });
+
+            if (self.settings.start_date != prev_start || self.settings.end_date != prev_end)
+                && !self.workouts.is_empty()
+            {
+                self.stats = compute_stats(
+                    &self.workouts,
+                    self.settings.start_date,
+                    self.settings.end_date,
+                );
+            }
         }
 
         if let Some(start) = self.toast_start {
