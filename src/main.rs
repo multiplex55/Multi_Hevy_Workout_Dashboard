@@ -1,7 +1,7 @@
 use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui_extras::DatePickerButton;
-use egui_plot::{Plot, Points, MarkerShape};
+use egui_plot::{MarkerShape, Plot, Points};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -14,8 +14,8 @@ mod analysis;
 use analysis::{BasicStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
-    OneRmFormula, XAxis, YAxis, estimated_1rm_line, sets_per_day_bar,
-    training_volume_line, unique_exercises, weight_over_time_line,
+    OneRmFormula, XAxis, YAxis, estimated_1rm_line, sets_per_day_bar, training_volume_line,
+    unique_exercises, weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -101,6 +101,10 @@ struct Settings {
     end_date: Option<NaiveDate>,
     x_axis: XAxis,
     y_axis: YAxis,
+    set_type_filter: Option<String>,
+    min_rpe: Option<f32>,
+    max_rpe: Option<f32>,
+    notes_filter: Option<String>,
 }
 
 impl Settings {
@@ -147,6 +151,10 @@ impl Default for Settings {
             end_date: None,
             x_axis: XAxis::Date,
             y_axis: YAxis::Weight,
+            set_type_filter: None,
+            min_rpe: None,
+            max_rpe: None,
+            notes_filter: None,
         }
     }
 }
@@ -222,6 +230,56 @@ impl MyApp {
                 *sort_ascending = true;
             }
         }
+    }
+
+    fn entry_matches_filters(&self, e: &WorkoutEntry) -> bool {
+        if let Some(ref st) = self.settings.set_type_filter {
+            if e.raw
+                .set_type
+                .as_deref()
+                .map(|s| s.eq_ignore_ascii_case(st))
+                != Some(true)
+            {
+                return false;
+            }
+        }
+        if let Some(min) = self.settings.min_rpe {
+            if e.raw.rpe.map(|r| r < min).unwrap_or(true) {
+                return false;
+            }
+        }
+        if let Some(max) = self.settings.max_rpe {
+            if e.raw.rpe.map(|r| r > max).unwrap_or(true) {
+                return false;
+            }
+        }
+        if let Some(ref nf) = self.settings.notes_filter {
+            let nf_l = nf.to_lowercase();
+            if e.raw
+                .exercise_notes
+                .as_deref()
+                .map(|n| n.to_lowercase().contains(&nf_l))
+                != Some(true)
+            {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn filtered_entries(&self) -> Vec<WorkoutEntry> {
+        self.workouts
+            .iter()
+            .filter(|e| self.entry_matches_filters(e))
+            .cloned()
+            .collect()
+    }
+
+    fn filtered_entry_refs(&self) -> Vec<&WorkoutEntry> {
+        self.workouts
+            .iter()
+            .filter(|e| self.entry_matches_filters(e))
+            .collect()
     }
 }
 
@@ -336,10 +394,7 @@ impl App for MyApp {
                     ui.label("No exercises selected");
                     ui.label("Select exercises from the dropdown");
                 } else {
-                    ui.label(format!(
-                        "Selected: {}",
-                        self.selected_exercises.join(", ")
-                    ));
+                    ui.label(format!("Selected: {}", self.selected_exercises.join(", ")));
                 }
 
                 ui.separator();
@@ -356,8 +411,9 @@ impl App for MyApp {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 if !self.workouts.is_empty() {
                     ui.heading("Exercise Summary");
+                    let filtered = self.filtered_entries();
                     let mut stats = analysis::aggregate_exercise_stats(
-                        &self.workouts,
+                        &filtered,
                         self.settings.one_rm_formula,
                         self.settings.start_date,
                         self.settings.end_date,
@@ -414,8 +470,9 @@ impl App for MyApp {
                             self.settings.end_date,
                         );
                         if self.selected_exercises.is_empty() {
+                            let filtered = self.filtered_entries();
                             if let Some(first) = unique_exercises(
-                                &self.workouts,
+                                &filtered,
                                 self.settings.start_date,
                                 self.settings.end_date,
                             )
@@ -448,11 +505,9 @@ impl App for MyApp {
                 }
                 ui.separator();
 
-                let mut exercises = unique_exercises(
-                    &self.workouts,
-                    self.settings.start_date,
-                    self.settings.end_date,
-                );
+                let filtered = self.filtered_entries();
+                let mut exercises =
+                    unique_exercises(&filtered, self.settings.start_date, self.settings.end_date);
                 if !self.search_query.is_empty() {
                     let q = self.search_query.to_lowercase();
                     exercises.retain(|e| e.to_lowercase().contains(&q));
@@ -469,13 +524,11 @@ impl App for MyApp {
                 ui.horizontal(|ui| {
                     ui.label("Exercises:");
                     egui::ComboBox::from_id_source("exercise_combo")
-                        .selected_text(
-                            if self.selected_exercises.is_empty() {
-                                String::new()
-                            } else {
-                                self.selected_exercises.join(", ")
-                            },
-                        )
+                        .selected_text(if self.selected_exercises.is_empty() {
+                            String::new()
+                        } else {
+                            self.selected_exercises.join(", ")
+                        })
                         .show_ui(ui, |ui| {
                             for ex in &exercises {
                                 let mut sel = self.selected_exercises.contains(ex);
@@ -497,7 +550,7 @@ impl App for MyApp {
                     let plot_resp = Plot::new("exercise_plot").show(ui, |plot_ui| {
                         if self.settings.show_weight {
                             for lw in weight_over_time_line(
-                                &self.workouts,
+                                &filtered,
                                 &sel,
                                 self.settings.start_date,
                                 self.settings.end_date,
@@ -520,7 +573,7 @@ impl App for MyApp {
                         }
                         if self.settings.show_est_1rm {
                             for lr in estimated_1rm_line(
-                                &self.workouts,
+                                &filtered,
                                 &sel,
                                 self.settings.one_rm_formula,
                                 self.settings.start_date,
@@ -543,7 +596,7 @@ impl App for MyApp {
                         }
                         if self.settings.show_volume {
                             plot_ui.line(training_volume_line(
-                                &self.workouts,
+                                &filtered,
                                 self.settings.start_date,
                                 self.settings.end_date,
                                 self.settings.x_axis,
@@ -558,7 +611,7 @@ impl App for MyApp {
                                 None
                             };
                             plot_ui.bar_chart(sets_per_day_bar(
-                                &self.workouts,
+                                &filtered,
                                 ex_for_sets,
                                 self.settings.start_date,
                                 self.settings.end_date,
@@ -579,17 +632,20 @@ impl App for MyApp {
         });
 
         if self.show_entries {
+            let mut entries = self.filtered_entries();
+            let mut table_filter = self.table_filter.clone();
+            let mut sort_column = self.sort_column;
+            let mut sort_ascending = self.sort_ascending;
             egui::Window::new("Workout Entries")
                 .open(&mut self.show_entries)
                 .vscroll(true)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Filter exercise:");
-                        ui.text_edit_singleline(&mut self.table_filter);
+                        ui.text_edit_singleline(&mut table_filter);
                     });
-                    let mut entries: Vec<&WorkoutEntry> = self.workouts.iter().collect();
-                    if !self.table_filter.is_empty() {
-                        let q = self.table_filter.to_lowercase();
+                    if !table_filter.is_empty() {
+                        let q = table_filter.to_lowercase();
                         entries.retain(|e| e.exercise.to_lowercase().contains(&q));
                     }
                     if let Some(start) = self.settings.start_date {
@@ -606,7 +662,7 @@ impl App for MyApp {
                                 .unwrap_or(false)
                         });
                     }
-                    entries.sort_by(|a, b| match self.sort_column {
+                    entries.sort_by(|a, b| match sort_column {
                         SortColumn::Date => a.date.cmp(&b.date),
                         SortColumn::Exercise => a.exercise.cmp(&b.exercise),
                         SortColumn::Weight => a
@@ -615,12 +671,10 @@ impl App for MyApp {
                             .unwrap_or(std::cmp::Ordering::Equal),
                         SortColumn::Reps => a.reps.cmp(&b.reps),
                     });
-                    if !self.sort_ascending {
+                    if !sort_ascending {
                         entries.reverse();
                     }
                     let row_height = ui.text_style_height(&egui::TextStyle::Body);
-                    let mut sort_column = self.sort_column;
-                    let mut sort_ascending = self.sort_ascending;
                     egui_extras::TableBuilder::new(ui)
                         .striped(true)
                         .resizable(true)
@@ -685,9 +739,10 @@ impl App for MyApp {
                                 });
                             }
                         });
-                    self.sort_column = sort_column;
-                    self.sort_ascending = sort_ascending;
                 });
+            self.table_filter = table_filter;
+            self.sort_column = sort_column;
+            self.sort_ascending = sort_ascending;
         }
 
         if self.show_settings {
@@ -852,6 +907,46 @@ impl App for MyApp {
                             self.settings_dirty = true;
                         }
                     });
+                    ui.horizontal(|ui| {
+                        ui.label("Set type filter:");
+                        let mut st = self.settings.set_type_filter.clone().unwrap_or_default();
+                        if ui.text_edit_singleline(&mut st).changed() {
+                            self.settings.set_type_filter =
+                                if st.trim().is_empty() { None } else { Some(st) };
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Notes contains:");
+                        let mut nf = self.settings.notes_filter.clone().unwrap_or_default();
+                        if ui.text_edit_singleline(&mut nf).changed() {
+                            self.settings.notes_filter =
+                                if nf.trim().is_empty() { None } else { Some(nf) };
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Min RPE:");
+                        let mut min = self
+                            .settings
+                            .min_rpe
+                            .map(|v| format!("{:.1}", v))
+                            .unwrap_or_default();
+                        if ui.text_edit_singleline(&mut min).changed() {
+                            self.settings.min_rpe = min.trim().parse().ok();
+                            self.settings_dirty = true;
+                        }
+                        ui.label("Max RPE:");
+                        let mut max = self
+                            .settings
+                            .max_rpe
+                            .map(|v| format!("{:.1}", v))
+                            .unwrap_or_default();
+                        if ui.text_edit_singleline(&mut max).changed() {
+                            self.settings.max_rpe = max.trim().parse().ok();
+                            self.settings_dirty = true;
+                        }
+                    });
                 });
         }
 
@@ -901,6 +996,10 @@ mod tests {
         s.x_axis = XAxis::WorkoutIndex;
         s.y_axis = YAxis::Volume;
         s.weight_unit = WeightUnit::Kg;
+        s.set_type_filter = Some("working".into());
+        s.min_rpe = Some(6.0);
+        s.max_rpe = Some(9.0);
+        s.notes_filter = Some("tempo".into());
 
         let json = serde_json::to_string(&s).unwrap();
         let loaded: Settings = serde_json::from_str(&json).unwrap();
