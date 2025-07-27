@@ -1457,6 +1457,12 @@ impl App for MyApp {
                         self.capture_rect = Some(plot_resp.response.rect);
                         ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
                     }
+                    if ui.button("Clear Exercises").clicked() {
+                        self.selected_exercises.clear();
+                        self.settings.selected_exercises.clear();
+                        self.settings_dirty = true;
+                        // Optionally recompute stats here
+                    }
                     let _ = ctx.input(|i| i.pointer.interact_pos());
                     plot_resp.response.context_menu(|ui| {
                         if ui.button("Export CSV").clicked() {
