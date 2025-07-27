@@ -1229,13 +1229,21 @@ impl App for MyApp {
                     });
                     ui.horizontal(|ui| {
                         ui.label("Body part:");
-                        let mut bp = self.settings.body_part_filter.clone().unwrap_or_default();
-                        if ui.text_edit_singleline(&mut bp).changed() {
-                            self.settings.body_part_filter = if bp.trim().is_empty() {
-                                None
-                            } else {
-                                Some(bp)
-                            };
+                        let prev = self.settings.body_part_filter.clone();
+                        let parts = body_parts::primary_muscle_groups();
+                        egui::ComboBox::from_id_source("body_part_filter_combo")
+                            .selected_text(prev.as_deref().unwrap_or("All"))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.settings.body_part_filter, None::<String>, "All");
+                                for p in parts {
+                                    ui.selectable_value(
+                                        &mut self.settings.body_part_filter,
+                                        Some(p.to_string()),
+                                        p,
+                                    );
+                                }
+                            });
+                        if prev != self.settings.body_part_filter {
                             self.settings_dirty = true;
                         }
                     });
