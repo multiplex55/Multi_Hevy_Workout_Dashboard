@@ -133,6 +133,12 @@ struct Settings {
     #[serde(default)]
     auto_load_last: bool,
     last_file: Option<String>,
+    selected_exercises: Vec<String>,
+    table_filter: String,
+    sort_column: SortColumn,
+    sort_ascending: bool,
+    summary_sort: SummarySort,
+    summary_sort_ascending: bool,
 }
 
 impl Settings {
@@ -192,11 +198,17 @@ impl Default for Settings {
             notes_filter: None,
             auto_load_last: true,
             last_file: None,
+            selected_exercises: Vec::new(),
+            table_filter: String::new(),
+            sort_column: SortColumn::Date,
+            sort_ascending: true,
+            summary_sort: SummarySort::Exercise,
+            summary_sort_ascending: true,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum SortColumn {
     Date,
     Exercise,
@@ -204,7 +216,7 @@ enum SortColumn {
     Reps,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum SummarySort {
     Exercise,
     Sets,
@@ -254,6 +266,13 @@ impl Default for MyApp {
             capture_rect: None,
             settings_dirty: false,
         };
+
+        app.selected_exercises = app.settings.selected_exercises.clone();
+        app.table_filter = app.settings.table_filter.clone();
+        app.sort_column = app.settings.sort_column;
+        app.sort_ascending = app.settings.sort_ascending;
+        app.summary_sort = app.settings.summary_sort;
+        app.summary_sort_ascending = app.settings.summary_sort_ascending;
 
         if app.settings.auto_load_last {
             if let Some(ref path) = app.settings.last_file {
@@ -630,6 +649,15 @@ impl MyApp {
         }
 
         plot_resp
+    }
+
+    fn sync_settings_from_app(&mut self) {
+        self.settings.selected_exercises = self.selected_exercises.clone();
+        self.settings.table_filter = self.table_filter.clone();
+        self.settings.sort_column = self.sort_column;
+        self.settings.sort_ascending = self.sort_ascending;
+        self.settings.summary_sort = self.summary_sort;
+        self.settings.summary_sort_ascending = self.summary_sort_ascending;
     }
 }
 
@@ -1454,6 +1482,11 @@ impl App for MyApp {
             self.settings_dirty = false;
         }
     }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.sync_settings_from_app();
+        self.settings.save();
+    }
 }
 
 fn main() -> eframe::Result<()> {
@@ -1494,6 +1527,12 @@ mod tests {
         s.show_body_part_volume = true;
         s.auto_load_last = false;
         s.last_file = Some("/tmp/test.csv".into());
+        s.selected_exercises = vec!["Bench".into()];
+        s.table_filter = "bench".into();
+        s.sort_column = SortColumn::Weight;
+        s.sort_ascending = false;
+        s.summary_sort = SummarySort::Volume;
+        s.summary_sort_ascending = false;
 
         let json = serde_json::to_string(&s).unwrap();
         let loaded: Settings = serde_json::from_str(&json).unwrap();
