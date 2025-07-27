@@ -41,6 +41,23 @@ pub enum SmoothingMethod {
     EMA,
 }
 
+/// How to aggregate training volume over time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VolumeAggregation {
+    /// Do not aggregate, keep daily values.
+    Daily,
+    /// Group data by ISO week.
+    Weekly,
+    /// Group data by calendar month.
+    Monthly,
+}
+
+impl Default for VolumeAggregation {
+    fn default() -> Self {
+        VolumeAggregation::Weekly
+    }
+}
+
 /// Result of generating a plot line with an optional marker for the maximum value.
 pub struct LineWithMarker {
     pub line: Line,
@@ -258,6 +275,86 @@ fn training_volume_points(
     points
 }
 
+/// Aggregate training volume by ISO week or calendar month.
+pub fn aggregated_volume_points(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+    x_axis: XAxis,
+    y_axis: YAxis,
+    unit: WeightUnit,
+    agg: VolumeAggregation,
+) -> Vec<[f64; 2]> {
+    use std::collections::BTreeMap;
+    match agg {
+        VolumeAggregation::Daily => {
+            training_volume_points(entries, start, end, x_axis, y_axis, unit)
+        }
+        VolumeAggregation::Weekly => {
+            let mut map: BTreeMap<(i32, u32), (f64, f64)> = BTreeMap::new();
+            for e in entries {
+                if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+                    if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                        let f = unit.factor() as f64;
+                        let key = (d.iso_week().year(), d.iso_week().week());
+                        let entry = map.entry(key).or_insert((0.0, 0.0));
+                        entry.0 += e.weight as f64 * f * e.reps as f64;
+                        entry.1 += e.weight as f64 * f;
+                    }
+                }
+            }
+            let mut points = Vec::new();
+            let mut idx = 0usize;
+            for ((year, week), (vol, weight)) in map {
+                if let Some(date) = NaiveDate::from_isoywd_opt(year, week, chrono::Weekday::Mon) {
+                    let x = match x_axis {
+                        XAxis::Date => date.num_days_from_ce() as f64,
+                        XAxis::WorkoutIndex => idx as f64,
+                    };
+                    let y = match y_axis {
+                        YAxis::Volume => vol,
+                        YAxis::Weight => weight,
+                    };
+                    points.push([x, y]);
+                    idx += 1;
+                }
+            }
+            points
+        }
+        VolumeAggregation::Monthly => {
+            let mut map: BTreeMap<(i32, u32), (f64, f64)> = BTreeMap::new();
+            for e in entries {
+                if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+                    if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                        let f = unit.factor() as f64;
+                        let key = (d.year(), d.month());
+                        let entry = map.entry(key).or_insert((0.0, 0.0));
+                        entry.0 += e.weight as f64 * f * e.reps as f64;
+                        entry.1 += e.weight as f64 * f;
+                    }
+                }
+            }
+            let mut points = Vec::new();
+            let mut idx = 0usize;
+            for ((year, month), (vol, weight)) in map {
+                if let Some(date) = NaiveDate::from_ymd_opt(year, month, 1) {
+                    let x = match x_axis {
+                        XAxis::Date => date.num_days_from_ce() as f64,
+                        XAxis::WorkoutIndex => idx as f64,
+                    };
+                    let y = match y_axis {
+                        YAxis::Volume => vol,
+                        YAxis::Weight => weight,
+                    };
+                    points.push([x, y]);
+                    idx += 1;
+                }
+            }
+            points
+        }
+    }
+}
+
 /// Calculate a simple moving average of the y-values in `points`.
 fn moving_average_points(points: &[[f64; 2]], window: usize) -> Vec<[f64; 2]> {
     if window == 0 {
@@ -466,6 +563,38 @@ mod tests {
     }
 
     #[test]
+    fn test_aggregated_volume_points_weekly() {
+        let d = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let pts = aggregated_volume_points(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::Date,
+            YAxis::Volume,
+            WeightUnit::Lbs,
+            VolumeAggregation::Weekly,
+        );
+        let expected = vec![[d.num_days_from_ce() as f64, 1425.0]];
+        assert_eq!(pts, expected);
+    }
+
+    #[test]
+    fn test_aggregated_volume_points_monthly() {
+        let d = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let pts = aggregated_volume_points(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::Date,
+            YAxis::Volume,
+            WeightUnit::Lbs,
+            VolumeAggregation::Monthly,
+        );
+        let expected = vec![[d.num_days_from_ce() as f64, 1425.0]];
+        assert_eq!(pts, expected);
+    }
+
+    #[test]
     fn test_moving_average_points() {
         let points = vec![[0.0, 1.0], [1.0, 3.0], [2.0, 5.0], [3.0, 7.0]];
         let ma = moving_average_points(&points, 2);
@@ -477,12 +606,7 @@ mod tests {
     fn test_ema_points() {
         let points = vec![[0.0, 1.0], [1.0, 3.0], [2.0, 5.0], [3.0, 7.0]];
         let ema = ema_points(&points, 0.5);
-        let expected = vec![
-            [0.0, 1.0],
-            [1.0, 2.0],
-            [2.0, 3.5],
-            [3.0, 5.25],
-        ];
+        let expected = vec![[0.0, 1.0], [1.0, 2.0], [2.0, 3.5], [3.0, 5.25]];
         for (a, b) in ema.iter().zip(expected.iter()) {
             assert!((a[1] - b[1]).abs() < 1e-6);
         }

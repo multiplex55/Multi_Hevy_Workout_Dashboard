@@ -1,7 +1,7 @@
 use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui_extras::DatePickerButton;
-use egui_plot::{MarkerShape, Plot, PlotGeometry, PlotItem, Points};
+use egui_plot::{Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -14,8 +14,9 @@ mod analysis;
 use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
-    OneRmFormula, SmoothingMethod, XAxis, YAxis, body_part_volume_line, estimated_1rm_line,
-    sets_per_day_bar, training_volume_line, unique_exercises, weight_over_time_line,
+    OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
+    body_part_volume_line, estimated_1rm_line, sets_per_day_bar, training_volume_line,
+    unique_exercises, weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -111,6 +112,8 @@ struct Settings {
     show_smoothed: bool,
     ma_window: usize,
     smoothing_method: SmoothingMethod,
+    #[serde(default)]
+    volume_aggregation: VolumeAggregation,
     weight_unit: WeightUnit,
     one_rm_formula: OneRmFormula,
     start_date: Option<NaiveDate>,
@@ -170,6 +173,7 @@ impl Default for Settings {
             show_smoothed: false,
             smoothing_method: SmoothingMethod::SimpleMA,
             ma_window: 5,
+            volume_aggregation: VolumeAggregation::Weekly,
             weight_unit: WeightUnit::Lbs,
             one_rm_formula: OneRmFormula::Epley,
             start_date: None,
@@ -536,6 +540,26 @@ impl MyApp {
                             }
                         }
                         plot_ui.line(l);
+                    }
+                    if self.settings.volume_aggregation != VolumeAggregation::Daily {
+                        let pts = aggregated_volume_points(
+                            filtered,
+                            self.settings.start_date,
+                            self.settings.end_date,
+                            self.settings.x_axis,
+                            self.settings.y_axis,
+                            self.settings.weight_unit,
+                            self.settings.volume_aggregation,
+                        );
+                        let name = match self.settings.volume_aggregation {
+                            VolumeAggregation::Weekly => "Weekly Volume",
+                            VolumeAggregation::Monthly => "Monthly Volume",
+                            VolumeAggregation::Daily => "Daily Volume",
+                        };
+                        for p in &pts {
+                            all_points.push(*p);
+                        }
+                        plot_ui.line(Line::new(PlotPoints::from(pts)).name(name));
                     }
                 }
                 if self.settings.show_body_part_volume {
@@ -1282,6 +1306,36 @@ impl App for MyApp {
                                 );
                             });
                         if prev != self.settings.weight_unit {
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Volume agg:");
+                        let prev = self.settings.volume_aggregation;
+                        egui::ComboBox::from_id_source("volume_agg_setting")
+                            .selected_text(match self.settings.volume_aggregation {
+                                VolumeAggregation::Daily => "Daily",
+                                VolumeAggregation::Weekly => "Weekly",
+                                VolumeAggregation::Monthly => "Monthly",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.settings.volume_aggregation,
+                                    VolumeAggregation::Daily,
+                                    "Daily",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.volume_aggregation,
+                                    VolumeAggregation::Weekly,
+                                    "Weekly",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.volume_aggregation,
+                                    VolumeAggregation::Monthly,
+                                    "Monthly",
+                                );
+                            });
+                        if prev != self.settings.volume_aggregation {
                             self.settings_dirty = true;
                         }
                     });
