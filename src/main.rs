@@ -107,15 +107,19 @@ fn parse_workout_csv<R: std::io::Read>(reader: R) -> Result<Vec<WorkoutEntry>, c
 
 fn parse_latest_pr_number(json: &str) -> Option<u64> {
     #[derive(serde::Deserialize)]
-    struct Pr { number: u64 }
-    serde_json::from_str::<Vec<Pr>>(json).ok()?.into_iter().next().map(|p| p.number)
+    struct Pr {
+        number: u64,
+    }
+    serde_json::from_str::<Vec<Pr>>(json)
+        .ok()?
+        .into_iter()
+        .next()
+        .map(|p| p.number)
 }
 
 fn check_for_new_pr(repo: &str, last: Option<u64>) -> Option<u64> {
     let url = format!("https://api.github.com/repos/{repo}/pulls?per_page=1");
-    let resp = ureq::get(&url)
-        .set("User-Agent", "multi-hevy")
-        .call();
+    let resp = ureq::get(&url).set("User-Agent", "multi-hevy").call();
     if let Ok(r) = resp {
         if r.status() == 200 {
             if let Ok(text) = r.into_string() {
@@ -150,6 +154,7 @@ struct Settings {
     x_axis: XAxis,
     y_axis: YAxis,
     set_type_filter: Option<String>,
+    superset_filter: Option<String>,
     body_part_filter: Option<String>,
     exercise_type_filter: Option<ExerciseType>,
     min_rpe: Option<f32>,
@@ -220,6 +225,7 @@ impl Default for Settings {
             x_axis: XAxis::Date,
             y_axis: YAxis::Weight,
             set_type_filter: None,
+            superset_filter: None,
             body_part_filter: None,
             exercise_type_filter: None,
             min_rpe: None,
@@ -452,6 +458,16 @@ impl MyApp {
                 .set_type
                 .as_deref()
                 .map(|s| s.eq_ignore_ascii_case(st))
+                != Some(true)
+            {
+                return false;
+            }
+        }
+        if let Some(ref ss) = self.settings.superset_filter {
+            if e.raw
+                .superset_id
+                .as_deref()
+                .map(|s| s.eq_ignore_ascii_case(ss))
                 != Some(true)
             {
                 return false;
@@ -1518,6 +1534,15 @@ impl App for MyApp {
                         }
                     });
                     ui.horizontal(|ui| {
+                        ui.label("Superset id:");
+                        let mut ss = self.settings.superset_filter.clone().unwrap_or_default();
+                        if ui.text_edit_singleline(&mut ss).changed() {
+                            self.settings.superset_filter =
+                                if ss.trim().is_empty() { None } else { Some(ss) };
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
                         ui.label("Notes contains:");
                         let mut nf = self.settings.notes_filter.clone().unwrap_or_default();
                         if ui.text_edit_singleline(&mut nf).changed() {
@@ -1671,6 +1696,7 @@ mod tests {
         s.y_axis = YAxis::Volume;
         s.weight_unit = WeightUnit::Kg;
         s.set_type_filter = Some("working".into());
+        s.superset_filter = Some("A".into());
         s.body_part_filter = Some("Chest".into());
         s.exercise_type_filter = Some(ExerciseType::Compound);
         s.min_rpe = Some(6.0);
