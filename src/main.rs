@@ -21,6 +21,7 @@ mod capture;
 use capture::{crop_image, save_png};
 mod export;
 use export::{save_entries_csv, save_entries_json, save_stats_csv, save_stats_json};
+mod body_parts;
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 struct WorkoutEntry {
@@ -29,6 +30,12 @@ struct WorkoutEntry {
     weight: f32,
     reps: u32,
     raw: RawWorkoutRow,
+}
+
+impl WorkoutEntry {
+    fn body_part(&self) -> Option<&'static str> {
+        body_parts::body_part_for(&self.exercise)
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize, Default)]
@@ -104,6 +111,7 @@ struct Settings {
     x_axis: XAxis,
     y_axis: YAxis,
     set_type_filter: Option<String>,
+    body_part_filter: Option<String>,
     min_rpe: Option<f32>,
     max_rpe: Option<f32>,
     notes_filter: Option<String>,
@@ -159,6 +167,7 @@ impl Default for Settings {
             x_axis: XAxis::Date,
             y_axis: YAxis::Weight,
             set_type_filter: None,
+            body_part_filter: None,
             min_rpe: None,
             max_rpe: None,
             notes_filter: None,
@@ -378,6 +387,12 @@ impl MyApp {
                 != Some(true)
             {
                 return false;
+            }
+        }
+        if let Some(ref bp) = self.settings.body_part_filter {
+            match e.body_part() {
+                Some(p) if p.eq_ignore_ascii_case(bp) => {}
+                _ => return false,
             }
         }
         true
@@ -1213,6 +1228,18 @@ impl App for MyApp {
                         }
                     });
                     ui.horizontal(|ui| {
+                        ui.label("Body part:");
+                        let mut bp = self.settings.body_part_filter.clone().unwrap_or_default();
+                        if ui.text_edit_singleline(&mut bp).changed() {
+                            self.settings.body_part_filter = if bp.trim().is_empty() {
+                                None
+                            } else {
+                                Some(bp)
+                            };
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
                         ui.label("Min RPE:");
                         let mut min = self
                             .settings
@@ -1286,6 +1313,7 @@ mod tests {
         s.y_axis = YAxis::Volume;
         s.weight_unit = WeightUnit::Kg;
         s.set_type_filter = Some("working".into());
+        s.body_part_filter = Some("Chest".into());
         s.min_rpe = Some(6.0);
         s.max_rpe = Some(9.0);
         s.notes_filter = Some("tempo".into());
@@ -1311,6 +1339,34 @@ Week 12 - Lower - Strength,\"26 Jul 2025, 07:06\",\"26 Jul 2025, 08:11\",desc,\"
         assert_eq!(e.raw.exercise_title, "Lying Leg Curl (Machine)");
         assert_eq!(e.raw.weight_lbs, Some(100.0));
         assert_eq!(e.raw.reps, Some(10));
+    }
+
+    #[test]
+    fn body_part_filter() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Squat".into(),
+                weight: 150.0,
+                reps: 5,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let mut app = MyApp {
+            workouts: entries,
+            ..Default::default()
+        };
+        app.settings.body_part_filter = Some("Chest".into());
+        let filtered = app.filtered_entries();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].exercise, "Bench");
     }
 
     #[test]

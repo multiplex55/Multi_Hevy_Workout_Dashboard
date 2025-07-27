@@ -16,6 +16,7 @@ dependencies = [
  "env_logger",
  "image",
  "log",
+ "phf",
  "rfd",
  "serde",
  "serde_json",
