@@ -32,6 +32,15 @@ pub enum YAxis {
     Volume,
 }
 
+/// Methods available for smoothing plot data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SmoothingMethod {
+    /// Simple moving average using a fixed window size.
+    SimpleMA,
+    /// Exponential moving average controlled by an alpha value.
+    EMA,
+}
+
 /// Result of generating a plot line with an optional marker for the maximum value.
 pub struct LineWithMarker {
     pub line: Line,
@@ -53,6 +62,7 @@ pub fn weight_over_time_line(
     y_axis: YAxis,
     unit: WeightUnit,
     ma_window: Option<usize>,
+    method: SmoothingMethod,
 ) -> Vec<LineWithMarker> {
     let mut lines = Vec::new();
     for exercise in exercises {
@@ -88,11 +98,17 @@ pub fn weight_over_time_line(
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
-                let ma_points = moving_average_points(&points, w);
+                let smooth_points = match method {
+                    SmoothingMethod::SimpleMA => moving_average_points(&points, w),
+                    SmoothingMethod::EMA => {
+                        let alpha = 2.0 / (w as f64 + 1.0);
+                        ema_points(&points, alpha)
+                    }
+                };
                 lines.push(LineWithMarker {
-                    line: Line::new(PlotPoints::from(ma_points.clone()))
+                    line: Line::new(PlotPoints::from(smooth_points.clone()))
                         .name(format!("{exercise} MA")),
-                    points: ma_points,
+                    points: smooth_points,
                     max_point: None,
                 });
             }
@@ -116,6 +132,7 @@ pub fn estimated_1rm_line(
     x_axis: XAxis,
     unit: WeightUnit,
     ma_window: Option<usize>,
+    method: SmoothingMethod,
 ) -> Vec<LineWithMarker> {
     let mut lines = Vec::new();
     for exercise in exercises {
@@ -156,11 +173,17 @@ pub fn estimated_1rm_line(
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
-                let ma_points = moving_average_points(&points, w);
+                let smooth_points = match method {
+                    SmoothingMethod::SimpleMA => moving_average_points(&points, w),
+                    SmoothingMethod::EMA => {
+                        let alpha = 2.0 / (w as f64 + 1.0);
+                        ema_points(&points, alpha)
+                    }
+                };
                 lines.push(LineWithMarker {
-                    line: Line::new(PlotPoints::from(ma_points.clone()))
+                    line: Line::new(PlotPoints::from(smooth_points.clone()))
                         .name(format!("{exercise} MA")),
-                    points: ma_points,
+                    points: smooth_points,
                     max_point: None,
                 });
             }
@@ -253,6 +276,21 @@ fn moving_average_points(points: &[[f64; 2]], window: usize) -> Vec<[f64; 2]> {
     out
 }
 
+/// Calculate an exponential moving average of the y-values in `points`.
+fn ema_points(points: &[[f64; 2]], alpha: f64) -> Vec<[f64; 2]> {
+    if points.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(points.len());
+    let mut ema = points[0][1];
+    out.push([points[0][0], ema]);
+    for i in 1..points.len() {
+        ema = alpha * points[i][1] + (1.0 - alpha) * ema;
+        out.push([points[i][0], ema]);
+    }
+    out
+}
+
 /// Create a line plot of total training volume per day.
 ///
 /// Training volume is calculated as `weight * reps` for each set. Only entries
@@ -265,14 +303,21 @@ pub fn training_volume_line(
     y_axis: YAxis,
     unit: WeightUnit,
     ma_window: Option<usize>,
+    method: SmoothingMethod,
 ) -> Vec<Line> {
     let points = training_volume_points(entries, start, end, x_axis, y_axis, unit);
     let mut lines = Vec::new();
     lines.push(Line::new(PlotPoints::from(points.clone())).name("Volume"));
     if let Some(w) = ma_window.filter(|w| *w > 1) {
         if points.len() > 1 {
-            let ma_pts = moving_average_points(&points, w);
-            lines.push(Line::new(PlotPoints::from(ma_pts)).name(format!("Volume MA")));
+            let smooth = match method {
+                SmoothingMethod::SimpleMA => moving_average_points(&points, w),
+                SmoothingMethod::EMA => {
+                    let alpha = 2.0 / (w as f64 + 1.0);
+                    ema_points(&points, alpha)
+                }
+            };
+            lines.push(Line::new(PlotPoints::from(smooth)).name(format!("Volume MA")));
         }
     }
     lines
@@ -428,6 +473,21 @@ mod tests {
         assert_eq!(ma, expected);
     }
 
+    #[test]
+    fn test_ema_points() {
+        let points = vec![[0.0, 1.0], [1.0, 3.0], [2.0, 5.0], [3.0, 7.0]];
+        let ema = ema_points(&points, 0.5);
+        let expected = vec![
+            [0.0, 1.0],
+            [1.0, 2.0],
+            [2.0, 3.5],
+            [3.0, 5.25],
+        ];
+        for (a, b) in ema.iter().zip(expected.iter()) {
+            assert!((a[1] - b[1]).abs() < 1e-6);
+        }
+    }
+
     fn line_points(line: Line) -> Vec<[f64; 2]> {
         if let PlotGeometry::Points(points) = line.geometry() {
             points.iter().map(|p| [p.x, p.y]).collect()
@@ -446,6 +506,7 @@ mod tests {
             YAxis::Volume,
             WeightUnit::Lbs,
             None,
+            SmoothingMethod::SimpleMA,
         )
         .into_iter()
         .next()
@@ -472,6 +533,7 @@ mod tests {
             YAxis::Weight,
             WeightUnit::Lbs,
             None,
+            SmoothingMethod::SimpleMA,
         );
         assert_eq!(res.len(), 1);
         let lw = res.into_iter().next().unwrap();
@@ -490,11 +552,32 @@ mod tests {
             YAxis::Volume,
             WeightUnit::Lbs,
             None,
+            SmoothingMethod::SimpleMA,
         )
         .into_iter()
         .next()
         .unwrap();
         let expected = vec![[0.0, 900.0], [1.0, 525.0]];
+        assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_training_volume_line_ema() {
+        let line = training_volume_line(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::WorkoutIndex,
+            YAxis::Volume,
+            WeightUnit::Lbs,
+            Some(2),
+            SmoothingMethod::EMA,
+        )
+        .into_iter()
+        .nth(1)
+        .unwrap();
+        // EMA smoothing of [0.0,900], [1.0,525] with alpha=2/(2+1)=0.666...
+        let expected = vec![[0.0, 900.0], [1.0, 650.0]];
         assert_eq!(line_points(line), expected);
     }
 
@@ -524,6 +607,7 @@ mod tests {
             XAxis::Date,
             WeightUnit::Lbs,
             None,
+            SmoothingMethod::SimpleMA,
         );
         assert_eq!(res_e.len(), 1);
         let expected_e = vec![
@@ -543,6 +627,7 @@ mod tests {
             XAxis::Date,
             WeightUnit::Lbs,
             None,
+            SmoothingMethod::SimpleMA,
         );
         assert_eq!(res_b.len(), 1);
         let lw_b = res_b.into_iter().next().unwrap();

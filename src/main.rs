@@ -14,8 +14,8 @@ mod analysis;
 use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
-    OneRmFormula, XAxis, YAxis, body_part_volume_line, estimated_1rm_line, sets_per_day_bar,
-    training_volume_line, unique_exercises, weight_over_time_line,
+    OneRmFormula, SmoothingMethod, XAxis, YAxis, body_part_volume_line, estimated_1rm_line,
+    sets_per_day_bar, training_volume_line, unique_exercises, weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -110,6 +110,7 @@ struct Settings {
     highlight_max: bool,
     show_smoothed: bool,
     ma_window: usize,
+    smoothing_method: SmoothingMethod,
     weight_unit: WeightUnit,
     one_rm_formula: OneRmFormula,
     start_date: Option<NaiveDate>,
@@ -167,6 +168,7 @@ impl Default for Settings {
             show_body_part_volume: false,
             highlight_max: true,
             show_smoothed: false,
+            smoothing_method: SmoothingMethod::SimpleMA,
             ma_window: 5,
             weight_unit: WeightUnit::Lbs,
             one_rm_formula: OneRmFormula::Epley,
@@ -461,6 +463,7 @@ impl MyApp {
                         self.settings.y_axis,
                         self.settings.weight_unit,
                         ma,
+                        self.settings.smoothing_method,
                     ) {
                         for p in &lw.points {
                             all_points.push(*p);
@@ -493,6 +496,7 @@ impl MyApp {
                         self.settings.x_axis,
                         self.settings.weight_unit,
                         ma,
+                        self.settings.smoothing_method,
                     ) {
                         for p in &lr.points {
                             all_points.push(*p);
@@ -524,6 +528,7 @@ impl MyApp {
                         self.settings.y_axis,
                         self.settings.weight_unit,
                         ma,
+                        self.settings.smoothing_method,
                     ) {
                         if let PlotGeometry::Points(pts) = l.geometry() {
                             for p in pts {
@@ -1129,6 +1134,30 @@ impl App for MyApp {
                         }
                     });
                     ui.horizontal(|ui| {
+                        ui.label("Smoothing:");
+                        let prev = self.settings.smoothing_method;
+                        egui::ComboBox::from_id_source("smoothing_method_combo")
+                            .selected_text(match self.settings.smoothing_method {
+                                SmoothingMethod::SimpleMA => "Simple MA",
+                                SmoothingMethod::EMA => "EMA",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.settings.smoothing_method,
+                                    SmoothingMethod::SimpleMA,
+                                    "Simple MA",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.smoothing_method,
+                                    SmoothingMethod::EMA,
+                                    "EMA",
+                                );
+                            });
+                        if prev != self.settings.smoothing_method {
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
                         ui.label("Start date:");
                         let mut start = self
                             .settings
@@ -1391,6 +1420,7 @@ mod tests {
         s.show_sets = false;
         s.show_smoothed = true;
         s.ma_window = 3;
+        s.smoothing_method = SmoothingMethod::EMA;
         s.one_rm_formula = OneRmFormula::Brzycki;
         s.start_date = Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
         s.end_date = Some(NaiveDate::from_ymd_opt(2024, 2, 1).unwrap());
