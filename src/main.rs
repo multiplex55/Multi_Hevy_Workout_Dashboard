@@ -225,6 +225,7 @@ struct MyApp {
     show_settings: bool,
     show_entries: bool,
     show_plot_window: bool,
+    show_about: bool,
     sort_column: SortColumn,
     sort_ascending: bool,
     summary_sort: SummarySort,
@@ -247,6 +248,7 @@ impl Default for MyApp {
             show_settings: false,
             show_entries: false,
             show_plot_window: false,
+            show_about: false,
             sort_column: SortColumn::Date,
             sort_ascending: true,
             summary_sort: SummarySort::Exercise,
@@ -676,6 +678,10 @@ impl App for MyApp {
                         self.show_entries = true;
                         ui.close_menu();
                     }
+                    if ui.button("Usage Tips").clicked() {
+                        self.show_about = true;
+                        ui.close_menu();
+                    }
                     if ui.button("Export Stats").clicked() {
                         if let Some(path) = FileDialog::new()
                             .add_filter("JSON", &["json"])
@@ -1094,6 +1100,20 @@ impl App for MyApp {
                     });
                 self.show_plot_window = open;
             }
+        }
+
+        if self.show_about {
+            egui::Window::new("Usage Tips")
+                .open(&mut self.show_about)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.heading("Multi Hevy Workout Dashboard");
+                    ui.separator();
+                    ui.label("\u{2022} Load a CSV export from Hevy using \"Load CSV\".");
+                    ui.label("\u{2022} Select exercises from the drop-down to update plots.");
+                    ui.label("\u{2022} Configure which plots are shown in the Settings window.");
+                    ui.label("\u{2022} Open Raw Entries from the File menu to view all sets.");
+                });
         }
 
         if self.show_settings {
