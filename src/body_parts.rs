@@ -1,7 +1,8 @@
 use phf::phf_map;
+use serde::{Deserialize, Serialize};
 
 /// Type of exercise based on muscle engagement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExerciseType {
     Compound,
     Isolation,
@@ -9,6 +10,14 @@ pub enum ExerciseType {
     Cardio,
     Plyometric,
 }
+
+pub const ALL_EXERCISE_TYPES: [ExerciseType; 5] = [
+    ExerciseType::Compound,
+    ExerciseType::Isolation,
+    ExerciseType::Isometric,
+    ExerciseType::Cardio,
+    ExerciseType::Plyometric,
+];
 
 /// Metadata about an exercise including its primary and secondary muscles.
 #[derive(Debug, Clone, Copy)]
