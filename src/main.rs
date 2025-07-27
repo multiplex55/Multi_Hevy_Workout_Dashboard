@@ -468,8 +468,7 @@ impl MyApp {
 
     fn entry_matches_filters(&self, e: &WorkoutEntry) -> bool {
         if self.settings.exclude_warmups {
-            if e
-                .raw
+            if e.raw
                 .set_type
                 .as_deref()
                 .map(|s| s.eq_ignore_ascii_case("warmup"))
@@ -1314,428 +1313,473 @@ impl App for MyApp {
             egui::Window::new("Settings")
                 .open(&mut self.show_settings)
                 .show(ctx, |ui| {
-                    if ui
-                        .checkbox(&mut self.settings.show_weight, "Show Weight over time")
-                        .changed()
-                    {
-                        self.settings_dirty = true;
-                    }
-                    if ui
-                        .checkbox(&mut self.settings.show_est_1rm, "Show Estimated 1RM")
-                        .changed()
-                    {
-                        self.settings_dirty = true;
-                    }
-                    if ui
-                        .checkbox(&mut self.settings.show_sets, "Show Sets per day")
-                        .changed()
-                    {
-                        self.settings_dirty = true;
-                    }
-                    if ui
-                        .checkbox(&mut self.settings.show_volume, "Show Training Volume")
-                        .changed()
-                    {
-                        self.settings_dirty = true;
-                    }
-                    if ui
-                        .checkbox(
-                            &mut self.settings.show_body_part_volume,
-                            "Show Volume by Body Part",
-                        )
-                        .changed()
-                    {
-                        self.settings_dirty = true;
-                    }
-                    if ui
-                        .checkbox(&mut self.settings.auto_load_last, "Auto-load last file")
-                        .changed()
-                    {
-                        self.settings_dirty = true;
-                    }
-                    if ui
-                        .checkbox(&mut self.settings.highlight_max, "Highlight maximums")
-                        .changed()
-                    {
-                        self.settings_dirty = true;
-                    }
-                    if ui
-                        .checkbox(&mut self.settings.show_smoothed, "Show moving average")
-                        .changed()
-                    {
-                        self.settings_dirty = true;
-                    }
-                    ui.horizontal(|ui| {
-                        ui.label("MA Window:");
-                        let mut w = self.settings.ma_window.to_string();
-                        if ui.text_edit_singleline(&mut w).changed() {
-                            if let Ok(v) = w.parse::<usize>() {
-                                self.settings.ma_window = v.max(1);
+                    egui::Grid::new("settings_grid")
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            if ui
+                                .checkbox(&mut self.settings.show_weight, "Show Weight over time")
+                                .changed()
+                            {
                                 self.settings_dirty = true;
                             }
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Smoothing:");
-                        let prev = self.settings.smoothing_method;
-                        egui::ComboBox::from_id_source("smoothing_method_combo")
-                            .selected_text(match self.settings.smoothing_method {
-                                SmoothingMethod::SimpleMA => "Simple MA",
-                                SmoothingMethod::EMA => "EMA",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.settings.smoothing_method,
-                                    SmoothingMethod::SimpleMA,
-                                    "Simple MA",
-                                );
-                                ui.selectable_value(
-                                    &mut self.settings.smoothing_method,
-                                    SmoothingMethod::EMA,
-                                    "EMA",
-                                );
-                            });
-                        if prev != self.settings.smoothing_method {
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Start date:");
-                        let mut start = self
-                            .settings
-                            .start_date
-                            .unwrap_or_else(|| Local::now().date_naive());
-                        if ui
-                            .add(DatePickerButton::new(&mut start).id_source("start_date"))
-                            .changed()
-                        {
-                            self.settings.start_date = Some(start);
-                            self.settings_dirty = true;
-                        }
-                        if self.settings.start_date.is_some() && ui.button("Clear").clicked() {
-                            self.settings.start_date = None;
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("End date:");
-                        let mut end = self
-                            .settings
-                            .end_date
-                            .unwrap_or_else(|| Local::now().date_naive());
-                        if ui
-                            .add(DatePickerButton::new(&mut end).id_source("end_date"))
-                            .changed()
-                        {
-                            self.settings.end_date = Some(end);
-                            self.settings_dirty = true;
-                        }
-                        if self.settings.end_date.is_some() && ui.button("Clear").clicked() {
-                            self.settings.end_date = None;
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("1RM Formula:");
-                        let prev = self.settings.one_rm_formula;
-                        egui::ComboBox::from_id_source("rm_formula_setting")
-                            .selected_text(match self.settings.one_rm_formula {
-                                OneRmFormula::Epley => "Epley",
-                                OneRmFormula::Brzycki => "Brzycki",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.settings.one_rm_formula,
-                                    OneRmFormula::Epley,
-                                    "Epley",
-                                );
-                                ui.selectable_value(
-                                    &mut self.settings.one_rm_formula,
-                                    OneRmFormula::Brzycki,
-                                    "Brzycki",
-                                );
-                            });
-                        if prev != self.settings.one_rm_formula {
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("X Axis:");
-                        let prev = self.settings.x_axis;
-                        egui::ComboBox::from_id_source("x_axis_setting")
-                            .selected_text(match self.settings.x_axis {
-                                XAxis::Date => "Date",
-                                XAxis::WorkoutIndex => "Workout Index",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.settings.x_axis, XAxis::Date, "Date");
-                                ui.selectable_value(
-                                    &mut self.settings.x_axis,
-                                    XAxis::WorkoutIndex,
-                                    "Workout Index",
-                                );
-                            });
-                        if prev != self.settings.x_axis {
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Y Axis:");
-                        let prev = self.settings.y_axis;
-                        egui::ComboBox::from_id_source("y_axis_setting")
-                            .selected_text(match self.settings.y_axis {
-                                YAxis::Weight => "Weight",
-                                YAxis::Volume => "Volume",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.settings.y_axis,
-                                    YAxis::Weight,
-                                    "Weight",
-                                );
-                                ui.selectable_value(
-                                    &mut self.settings.y_axis,
-                                    YAxis::Volume,
-                                    "Volume",
-                                );
-                            });
-                        if prev != self.settings.y_axis {
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Weight unit:");
-                        let prev = self.settings.weight_unit;
-                        egui::ComboBox::from_id_source("weight_unit_setting")
-                            .selected_text(match self.settings.weight_unit {
-                                WeightUnit::Lbs => "lbs",
-                                WeightUnit::Kg => "kg",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.settings.weight_unit,
-                                    WeightUnit::Lbs,
-                                    "lbs",
-                                );
-                                ui.selectable_value(
-                                    &mut self.settings.weight_unit,
-                                    WeightUnit::Kg,
-                                    "kg",
-                                );
-                            });
-                        if prev != self.settings.weight_unit {
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Volume agg:");
-                        let prev = self.settings.volume_aggregation;
-                        egui::ComboBox::from_id_source("volume_agg_setting")
-                            .selected_text(match self.settings.volume_aggregation {
-                                VolumeAggregation::Daily => "Daily",
-                                VolumeAggregation::Weekly => "Weekly",
-                                VolumeAggregation::Monthly => "Monthly",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.settings.volume_aggregation,
-                                    VolumeAggregation::Daily,
-                                    "Daily",
-                                );
-                                ui.selectable_value(
-                                    &mut self.settings.volume_aggregation,
-                                    VolumeAggregation::Weekly,
-                                    "Weekly",
-                                );
-                                ui.selectable_value(
-                                    &mut self.settings.volume_aggregation,
-                                    VolumeAggregation::Monthly,
-                                    "Monthly",
-                                );
-                            });
-                        if prev != self.settings.volume_aggregation {
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Body part agg:");
-                        let prev = self.settings.body_part_volume_aggregation;
-                        egui::ComboBox::from_id_source("body_part_volume_agg_setting")
-                            .selected_text(match self.settings.body_part_volume_aggregation {
-                                VolumeAggregation::Daily => "Daily",
-                                VolumeAggregation::Weekly => "Weekly",
-                                VolumeAggregation::Monthly => "Monthly",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.settings.body_part_volume_aggregation,
-                                    VolumeAggregation::Daily,
-                                    "Daily",
-                                );
-                                ui.selectable_value(
-                                    &mut self.settings.body_part_volume_aggregation,
-                                    VolumeAggregation::Weekly,
-                                    "Weekly",
-                                );
-                                ui.selectable_value(
-                                    &mut self.settings.body_part_volume_aggregation,
-                                    VolumeAggregation::Monthly,
-                                    "Monthly",
-                                );
-                            });
-                        if prev != self.settings.body_part_volume_aggregation {
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Set type filter:");
-                        let mut st = self.settings.set_type_filter.clone().unwrap_or_default();
-                        if ui.text_edit_singleline(&mut st).changed() {
-                            self.settings.set_type_filter =
-                                if st.trim().is_empty() { None } else { Some(st) };
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Superset id:");
-                        let mut ss = self.settings.superset_filter.clone().unwrap_or_default();
-                        if ui.text_edit_singleline(&mut ss).changed() {
-                            self.settings.superset_filter =
-                                if ss.trim().is_empty() { None } else { Some(ss) };
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Notes contains:");
-                        let mut nf = self.settings.notes_filter.clone().unwrap_or_default();
-                        if ui.text_edit_singleline(&mut nf).changed() {
-                            self.settings.notes_filter =
-                                if nf.trim().is_empty() { None } else { Some(nf) };
-                            self.settings_dirty = true;
-                        }
-                    });
-                    if ui
-                        .checkbox(&mut self.settings.exclude_warmups, "Exclude warm-up sets")
-                        .changed()
-                    {
-                        self.settings_dirty = true;
-                    }
-                    ui.horizontal(|ui| {
-                        ui.label("Body part:");
-                        let prev = self.settings.body_part_filter.clone();
-                        let parts = body_parts::primary_muscle_groups();
-                        egui::ComboBox::from_id_source("body_part_filter_combo")
-                            .selected_text(prev.as_deref().unwrap_or("All"))
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.settings.body_part_filter,
-                                    None::<String>,
-                                    "All",
-                                );
-                                for p in parts {
-                                    ui.selectable_value(
-                                        &mut self.settings.body_part_filter,
-                                        Some(p.to_string()),
-                                        p,
-                                    );
+                            if ui
+                                .checkbox(&mut self.settings.show_est_1rm, "Show Estimated 1RM")
+                                .changed()
+                            {
+                                self.settings_dirty = true;
+                            }
+                            ui.end_row();
+
+                            if ui
+                                .checkbox(&mut self.settings.show_sets, "Show Sets per day")
+                                .changed()
+                            {
+                                self.settings_dirty = true;
+                            }
+                            if ui
+                                .checkbox(&mut self.settings.show_volume, "Show Training Volume")
+                                .changed()
+                            {
+                                self.settings_dirty = true;
+                            }
+                            ui.end_row();
+
+                            if ui
+                                .checkbox(
+                                    &mut self.settings.show_body_part_volume,
+                                    "Show Volume by Body Part",
+                                )
+                                .changed()
+                            {
+                                self.settings_dirty = true;
+                            }
+                            if ui
+                                .checkbox(&mut self.settings.auto_load_last, "Auto-load last file")
+                                .changed()
+                            {
+                                self.settings_dirty = true;
+                            }
+                            ui.end_row();
+
+                            if ui
+                                .checkbox(&mut self.settings.highlight_max, "Highlight maximums")
+                                .changed()
+                            {
+                                self.settings_dirty = true;
+                            }
+                            if ui
+                                .checkbox(&mut self.settings.show_smoothed, "Show moving average")
+                                .changed()
+                            {
+                                self.settings_dirty = true;
+                            }
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("MA Window:");
+                                let mut w = self.settings.ma_window.to_string();
+                                if ui.text_edit_singleline(&mut w).changed() {
+                                    if let Ok(v) = w.parse::<usize>() {
+                                        self.settings.ma_window = v.max(1);
+                                        self.settings_dirty = true;
+                                    }
                                 }
                             });
-                        if prev != self.settings.body_part_filter {
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Exercise type:");
-                        let prev = self.settings.exercise_type_filter;
-                        egui::ComboBox::from_id_source("exercise_type_filter_combo")
-                            .selected_text(match prev {
-                                Some(k) => format!("{:?}", k),
-                                None => "Any".into(),
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut self.settings.exercise_type_filter,
-                                    None::<ExerciseType>,
-                                    "Any",
-                                );
-                                for k in body_parts::ALL_EXERCISE_TYPES {
-                                    ui.selectable_value(
-                                        &mut self.settings.exercise_type_filter,
-                                        Some(k),
-                                        format!("{:?}", k),
-                                    );
+                            ui.horizontal(|ui| {
+                                ui.label("Smoothing:");
+                                let prev = self.settings.smoothing_method;
+                                egui::ComboBox::from_id_source("smoothing_method_combo")
+                                    .selected_text(match self.settings.smoothing_method {
+                                        SmoothingMethod::SimpleMA => "Simple MA",
+                                        SmoothingMethod::EMA => "EMA",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.settings.smoothing_method,
+                                            SmoothingMethod::SimpleMA,
+                                            "Simple MA",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.settings.smoothing_method,
+                                            SmoothingMethod::EMA,
+                                            "EMA",
+                                        );
+                                    });
+                                if prev != self.settings.smoothing_method {
+                                    self.settings_dirty = true;
                                 }
                             });
-                        if prev != self.settings.exercise_type_filter {
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Min RPE:");
-                        let mut min = self
-                            .settings
-                            .min_rpe
-                            .map(|v| format!("{:.1}", v))
-                            .unwrap_or_default();
-                        if ui.text_edit_singleline(&mut min).changed() {
-                            self.settings.min_rpe = min.trim().parse().ok();
-                            self.settings_dirty = true;
-                        }
-                        ui.label("Max RPE:");
-                        let mut max = self
-                            .settings
-                            .max_rpe
-                            .map(|v| format!("{:.1}", v))
-                            .unwrap_or_default();
-                        if ui.text_edit_singleline(&mut max).changed() {
-                            self.settings.max_rpe = max.trim().parse().ok();
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Min weight:");
-                        let mut mw = self
-                            .settings
-                            .min_weight
-                            .map(|v| format!("{:.1}", v))
-                            .unwrap_or_default();
-                        if ui.text_edit_singleline(&mut mw).changed() {
-                            self.settings.min_weight = mw.trim().parse().ok();
-                            self.settings_dirty = true;
-                        }
-                        ui.label("Max weight:");
-                        let mut mxw = self
-                            .settings
-                            .max_weight
-                            .map(|v| format!("{:.1}", v))
-                            .unwrap_or_default();
-                        if ui.text_edit_singleline(&mut mxw).changed() {
-                            self.settings.max_weight = mxw.trim().parse().ok();
-                            self.settings_dirty = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Min reps:");
-                        let mut mr = self
-                            .settings
-                            .min_reps
-                            .map(|v| v.to_string())
-                            .unwrap_or_default();
-                        if ui.text_edit_singleline(&mut mr).changed() {
-                            self.settings.min_reps = mr.trim().parse().ok();
-                            self.settings_dirty = true;
-                        }
-                        ui.label("Max reps:");
-                        let mut mxr = self
-                            .settings
-                            .max_reps
-                            .map(|v| v.to_string())
-                            .unwrap_or_default();
-                        if ui.text_edit_singleline(&mut mxr).changed() {
-                            self.settings.max_reps = mxr.trim().parse().ok();
-                            self.settings_dirty = true;
-                        }
-                    });
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Start date:");
+                                let mut start = self
+                                    .settings
+                                    .start_date
+                                    .unwrap_or_else(|| Local::now().date_naive());
+                                if ui
+                                    .add(DatePickerButton::new(&mut start).id_source("start_date"))
+                                    .changed()
+                                {
+                                    self.settings.start_date = Some(start);
+                                    self.settings_dirty = true;
+                                }
+                                if self.settings.start_date.is_some()
+                                    && ui.button("Clear").clicked()
+                                {
+                                    self.settings.start_date = None;
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("End date:");
+                                let mut end = self
+                                    .settings
+                                    .end_date
+                                    .unwrap_or_else(|| Local::now().date_naive());
+                                if ui
+                                    .add(DatePickerButton::new(&mut end).id_source("end_date"))
+                                    .changed()
+                                {
+                                    self.settings.end_date = Some(end);
+                                    self.settings_dirty = true;
+                                }
+                                if self.settings.end_date.is_some() && ui.button("Clear").clicked()
+                                {
+                                    self.settings.end_date = None;
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("1RM Formula:");
+                                let prev = self.settings.one_rm_formula;
+                                egui::ComboBox::from_id_source("rm_formula_setting")
+                                    .selected_text(match self.settings.one_rm_formula {
+                                        OneRmFormula::Epley => "Epley",
+                                        OneRmFormula::Brzycki => "Brzycki",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.settings.one_rm_formula,
+                                            OneRmFormula::Epley,
+                                            "Epley",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.settings.one_rm_formula,
+                                            OneRmFormula::Brzycki,
+                                            "Brzycki",
+                                        );
+                                    });
+                                if prev != self.settings.one_rm_formula {
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("X Axis:");
+                                let prev = self.settings.x_axis;
+                                egui::ComboBox::from_id_source("x_axis_setting")
+                                    .selected_text(match self.settings.x_axis {
+                                        XAxis::Date => "Date",
+                                        XAxis::WorkoutIndex => "Workout Index",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.settings.x_axis,
+                                            XAxis::Date,
+                                            "Date",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.settings.x_axis,
+                                            XAxis::WorkoutIndex,
+                                            "Workout Index",
+                                        );
+                                    });
+                                if prev != self.settings.x_axis {
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Y Axis:");
+                                let prev = self.settings.y_axis;
+                                egui::ComboBox::from_id_source("y_axis_setting")
+                                    .selected_text(match self.settings.y_axis {
+                                        YAxis::Weight => "Weight",
+                                        YAxis::Volume => "Volume",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.settings.y_axis,
+                                            YAxis::Weight,
+                                            "Weight",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.settings.y_axis,
+                                            YAxis::Volume,
+                                            "Volume",
+                                        );
+                                    });
+                                if prev != self.settings.y_axis {
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Weight unit:");
+                                let prev = self.settings.weight_unit;
+                                egui::ComboBox::from_id_source("weight_unit_setting")
+                                    .selected_text(match self.settings.weight_unit {
+                                        WeightUnit::Lbs => "lbs",
+                                        WeightUnit::Kg => "kg",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.settings.weight_unit,
+                                            WeightUnit::Lbs,
+                                            "lbs",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.settings.weight_unit,
+                                            WeightUnit::Kg,
+                                            "kg",
+                                        );
+                                    });
+                                if prev != self.settings.weight_unit {
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Volume agg:");
+                                let prev = self.settings.volume_aggregation;
+                                egui::ComboBox::from_id_source("volume_agg_setting")
+                                    .selected_text(match self.settings.volume_aggregation {
+                                        VolumeAggregation::Daily => "Daily",
+                                        VolumeAggregation::Weekly => "Weekly",
+                                        VolumeAggregation::Monthly => "Monthly",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.settings.volume_aggregation,
+                                            VolumeAggregation::Daily,
+                                            "Daily",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.settings.volume_aggregation,
+                                            VolumeAggregation::Weekly,
+                                            "Weekly",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.settings.volume_aggregation,
+                                            VolumeAggregation::Monthly,
+                                            "Monthly",
+                                        );
+                                    });
+                                if prev != self.settings.volume_aggregation {
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Body part agg:");
+                                let prev = self.settings.body_part_volume_aggregation;
+                                egui::ComboBox::from_id_source("body_part_volume_agg_setting")
+                                    .selected_text(
+                                        match self.settings.body_part_volume_aggregation {
+                                            VolumeAggregation::Daily => "Daily",
+                                            VolumeAggregation::Weekly => "Weekly",
+                                            VolumeAggregation::Monthly => "Monthly",
+                                        },
+                                    )
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.settings.body_part_volume_aggregation,
+                                            VolumeAggregation::Daily,
+                                            "Daily",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.settings.body_part_volume_aggregation,
+                                            VolumeAggregation::Weekly,
+                                            "Weekly",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.settings.body_part_volume_aggregation,
+                                            VolumeAggregation::Monthly,
+                                            "Monthly",
+                                        );
+                                    });
+                                if prev != self.settings.body_part_volume_aggregation {
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Set type filter:");
+                                let mut st =
+                                    self.settings.set_type_filter.clone().unwrap_or_default();
+                                if ui.text_edit_singleline(&mut st).changed() {
+                                    self.settings.set_type_filter =
+                                        if st.trim().is_empty() { None } else { Some(st) };
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Superset id:");
+                                let mut ss =
+                                    self.settings.superset_filter.clone().unwrap_or_default();
+                                if ui.text_edit_singleline(&mut ss).changed() {
+                                    self.settings.superset_filter =
+                                        if ss.trim().is_empty() { None } else { Some(ss) };
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Notes contains:");
+                                let mut nf = self.settings.notes_filter.clone().unwrap_or_default();
+                                if ui.text_edit_singleline(&mut nf).changed() {
+                                    self.settings.notes_filter =
+                                        if nf.trim().is_empty() { None } else { Some(nf) };
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            if ui
+                                .checkbox(
+                                    &mut self.settings.exclude_warmups,
+                                    "Exclude warm-up sets",
+                                )
+                                .changed()
+                            {
+                                self.settings_dirty = true;
+                            }
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Body part:");
+                                let prev = self.settings.body_part_filter.clone();
+                                let parts = body_parts::primary_muscle_groups();
+                                egui::ComboBox::from_id_source("body_part_filter_combo")
+                                    .selected_text(prev.as_deref().unwrap_or("All"))
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.settings.body_part_filter,
+                                            None::<String>,
+                                            "All",
+                                        );
+                                        for p in parts {
+                                            ui.selectable_value(
+                                                &mut self.settings.body_part_filter,
+                                                Some(p.to_string()),
+                                                p,
+                                            );
+                                        }
+                                    });
+                                if prev != self.settings.body_part_filter {
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Exercise type:");
+                                let prev = self.settings.exercise_type_filter;
+                                egui::ComboBox::from_id_source("exercise_type_filter_combo")
+                                    .selected_text(match prev {
+                                        Some(k) => format!("{:?}", k),
+                                        None => "Any".into(),
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.settings.exercise_type_filter,
+                                            None::<ExerciseType>,
+                                            "Any",
+                                        );
+                                        for k in body_parts::ALL_EXERCISE_TYPES {
+                                            ui.selectable_value(
+                                                &mut self.settings.exercise_type_filter,
+                                                Some(k),
+                                                format!("{:?}", k),
+                                            );
+                                        }
+                                    });
+                                if prev != self.settings.exercise_type_filter {
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Min RPE:");
+                                let mut min = self
+                                    .settings
+                                    .min_rpe
+                                    .map(|v| format!("{:.1}", v))
+                                    .unwrap_or_default();
+                                if ui.text_edit_singleline(&mut min).changed() {
+                                    self.settings.min_rpe = min.trim().parse().ok();
+                                    self.settings_dirty = true;
+                                }
+                                ui.label("Max RPE:");
+                                let mut max = self
+                                    .settings
+                                    .max_rpe
+                                    .map(|v| format!("{:.1}", v))
+                                    .unwrap_or_default();
+                                if ui.text_edit_singleline(&mut max).changed() {
+                                    self.settings.max_rpe = max.trim().parse().ok();
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Min weight:");
+                                let mut mw = self
+                                    .settings
+                                    .min_weight
+                                    .map(|v| format!("{:.1}", v))
+                                    .unwrap_or_default();
+                                if ui.text_edit_singleline(&mut mw).changed() {
+                                    self.settings.min_weight = mw.trim().parse().ok();
+                                    self.settings_dirty = true;
+                                }
+                                ui.label("Max weight:");
+                                let mut mxw = self
+                                    .settings
+                                    .max_weight
+                                    .map(|v| format!("{:.1}", v))
+                                    .unwrap_or_default();
+                                if ui.text_edit_singleline(&mut mxw).changed() {
+                                    self.settings.max_weight = mxw.trim().parse().ok();
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.end_row();
+
+                            ui.horizontal(|ui| {
+                                ui.label("Min reps:");
+                                let mut mr = self
+                                    .settings
+                                    .min_reps
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_default();
+                                if ui.text_edit_singleline(&mut mr).changed() {
+                                    self.settings.min_reps = mr.trim().parse().ok();
+                                    self.settings_dirty = true;
+                                }
+                                ui.label("Max reps:");
+                                let mut mxr = self
+                                    .settings
+                                    .max_reps
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_default();
+                                if ui.text_edit_singleline(&mut mxr).changed() {
+                                    self.settings.max_reps = mxr.trim().parse().ok();
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            ui.end_row();
+                        });
                 });
 
             if (self.settings.start_date != prev_start || self.settings.end_date != prev_end)
