@@ -2,7 +2,7 @@
 use crate::WorkoutEntry;
 use crate::body_parts::body_part_for;
 use crate::plotting::OneRmFormula;
-use chrono::{NaiveDate, Datelike};
+use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -73,11 +73,13 @@ pub fn aggregate_exercise_stats(
                     _ => Some(est),
                 };
 
-                let t = d.num_days_from_ce() as f32;
-                trend_data
-                    .entry(e.exercise.clone())
-                    .or_default()
-                    .push((t, e.weight, e.weight * e.reps as f32));
+                // Scale the time axis so slope represents change per month
+                let t = d.num_days_from_ce() as f32 / 30.0;
+                trend_data.entry(e.exercise.clone()).or_default().push((
+                    t,
+                    e.weight,
+                    e.weight * e.reps as f32,
+                ));
             }
         }
     }

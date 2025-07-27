@@ -469,11 +469,11 @@ impl MyApp {
         });
     }
 
-    fn trend_symbol(trend: Option<f32>) -> &'static str {
+    fn trend_value(trend: Option<f32>, factor: f32) -> String {
         match trend {
-            Some(t) if t > 0.0 => "\u{25B2}",
-            Some(t) if t < 0.0 => "\u{25BC}",
-            _ => "\u{2013}",
+            Some(t) if t > 0.0 => format!("+{:.1}", t * factor),
+            Some(t) if t < 0.0 => format!("\u{2013}{:.1}", (t * factor).abs()),
+            _ => "\u{2013}".to_owned(),
         }
     }
 
@@ -1250,8 +1250,8 @@ impl App for MyApp {
                                         } else {
                                             ui.label("-");
                                         }
-                                        ui.label(MyApp::trend_symbol(s.weight_trend));
-                                        ui.label(MyApp::trend_symbol(s.volume_trend));
+                                        ui.label(MyApp::trend_value(s.weight_trend, f));
+                                        ui.label(MyApp::trend_value(s.volume_trend, f));
                                         ui.end_row();
                                     }
                                 });
