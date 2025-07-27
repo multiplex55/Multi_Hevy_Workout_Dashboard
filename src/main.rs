@@ -627,6 +627,22 @@ impl MyApp {
             .collect()
     }
 
+    /// Return entries that match the current filters and the selected exercises.
+    fn filtered_selected_entries(&self) -> Vec<WorkoutEntry> {
+        self.filtered_entries()
+            .into_iter()
+            .filter(|e| {
+                self.selected_exercises.is_empty() || self.selected_exercises.contains(&e.exercise)
+            })
+            .collect()
+    }
+
+    /// Recompute `self.stats` using only the selected exercises.
+    fn update_selected_stats(&mut self) {
+        let entries = self.filtered_selected_entries();
+        self.stats = compute_stats(&entries, self.settings.start_date, self.settings.end_date);
+    }
+
     fn exercise_set_counts(&self, exercise: &str) -> (usize, usize, usize) {
         use std::collections::HashSet;
         let mut workouts = HashSet::new();
@@ -1438,6 +1454,7 @@ impl App for MyApp {
                                     } else {
                                         self.selected_exercises.retain(|e| e != ex);
                                     }
+                                    self.update_selected_stats();
                                 }
                             }
                         });
@@ -1445,12 +1462,14 @@ impl App for MyApp {
                     resp.response.context_menu(|ui| {
                         if ui.button("Clear selection").clicked() {
                             self.selected_exercises.clear();
+                            self.update_selected_stats();
                             ui.close_menu();
                         }
                         for ex in self.selected_exercises.clone() {
                             let label = format!("Remove {ex}");
                             if ui.button(label).clicked() {
                                 self.selected_exercises.retain(|e| e != &ex);
+                                self.update_selected_stats();
                                 ui.close_menu();
                             }
                         }
@@ -1470,7 +1489,7 @@ impl App for MyApp {
                         self.selected_exercises.clear();
                         self.settings.selected_exercises.clear();
                         self.settings_dirty = true;
-                        // Optionally recompute stats here
+                        self.update_selected_stats();
                     }
                     let _ = ctx.input(|i| i.pointer.interact_pos());
                     plot_resp.response.context_menu(|ui| {
@@ -1493,6 +1512,7 @@ impl App for MyApp {
                             for ex in &sel {
                                 self.selected_exercises.retain(|e| e != ex);
                             }
+                            self.update_selected_stats();
                             ui.close_menu();
                         }
                     });
@@ -1656,11 +1676,23 @@ impl App for MyApp {
                 .open(&mut open)
                 .resizable(true)
                 .show(ctx, |ui| {
+                    let entries = self.filtered_selected_entries();
+                    let stats_map = analysis::aggregate_exercise_stats(
+                        &entries,
+                        self.settings.one_rm_formula,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    );
                     for ex in &self.selected_exercises {
-                        let (w, working, warmup) = self.exercise_set_counts(ex);
-                        ui.label(format!(
-                            "{ex}: {w} workouts, {working} working sets, {warmup} warm-up sets"
-                        ));
+                        if let Some(s) = stats_map.get(ex) {
+                            let f = self.settings.weight_unit.factor();
+                            ui.label(format!(
+                                "{ex}: {} sets, {} reps, {:.1} volume",
+                                s.total_sets,
+                                s.total_reps,
+                                s.total_volume * f
+                            ));
+                        }
                     }
                 });
             self.show_exercise_stats = open;
