@@ -154,6 +154,8 @@ struct Settings {
     #[serde(default)]
     show_exercise_stats: bool,
     #[serde(default)]
+    show_personal_records: bool,
+    #[serde(default)]
     show_exercise_panel: bool,
     highlight_max: bool,
     #[serde(default)]
@@ -243,6 +245,7 @@ impl Default for Settings {
             show_body_part_volume: false,
             show_exercise_volume: false,
             show_exercise_stats: false,
+            show_personal_records: false,
             show_exercise_panel: true,
             highlight_max: true,
             show_weight_trend: false,
@@ -320,6 +323,7 @@ struct MyApp {
     show_entries: bool,
     show_plot_window: bool,
     show_exercise_stats: bool,
+    show_personal_records: bool,
     show_exercise_panel: bool,
     show_about: bool,
     sort_column: SortColumn,
@@ -336,6 +340,7 @@ impl Default for MyApp {
     fn default() -> Self {
         let settings = Settings::load();
         let show_exercise_stats = settings.show_exercise_stats;
+        let show_personal_records = settings.show_personal_records;
         let show_exercise_panel = settings.show_exercise_panel;
         let mut app = Self {
             workouts: Vec::new(),
@@ -352,6 +357,7 @@ impl Default for MyApp {
             show_entries: false,
             show_plot_window: false,
             show_exercise_stats,
+            show_personal_records,
             show_exercise_panel,
             show_about: false,
             sort_column: SortColumn::Date,
@@ -1106,6 +1112,7 @@ impl MyApp {
         self.settings.summary_sort = self.summary_sort;
         self.settings.summary_sort_ascending = self.summary_sort_ascending;
         self.settings.show_exercise_stats = self.show_exercise_stats;
+        self.settings.show_personal_records = self.show_personal_records;
         self.settings.show_exercise_panel = self.show_exercise_panel;
     }
 }
@@ -1156,6 +1163,12 @@ impl App for MyApp {
                     if ui.button("Exercise Stats").clicked() {
                         self.show_exercise_stats = !self.show_exercise_stats;
                         self.settings.show_exercise_stats = self.show_exercise_stats;
+                        self.settings_dirty = true;
+                        ui.close_menu();
+                    }
+                    if ui.button("Personal Records").clicked() {
+                        self.show_personal_records = !self.show_personal_records;
+                        self.settings.show_personal_records = self.show_personal_records;
                         self.settings_dirty = true;
                         ui.close_menu();
                     }
@@ -1726,6 +1739,55 @@ impl App for MyApp {
                         });
                 });
             self.show_exercise_stats = open;
+        }
+
+        if self.show_personal_records {
+            let mut open = self.show_personal_records;
+            egui::Window::new("Personal Records")
+                .open(&mut open)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    let entries = self.filtered_entries();
+                    let mut recs: Vec<_> = analysis::personal_records(
+                        &entries,
+                        self.settings.one_rm_formula,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    )
+                    .into_iter()
+                    .collect();
+                    recs.sort_by(|a, b| a.0.cmp(&b.0));
+                    let f = self.settings.weight_unit.factor();
+                    egui::Grid::new("personal_records_grid")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.label("Exercise");
+                            ui.label("Max Weight");
+                            ui.label("Max Volume");
+                            ui.label("Best 1RM");
+                            ui.end_row();
+                            for (ex, r) in &recs {
+                                ui.label(ex);
+                                if let Some(w) = r.max_weight {
+                                    ui.label(format!("{:.1}", w * f));
+                                } else {
+                                    ui.label("-");
+                                }
+                                if let Some(v) = r.max_volume {
+                                    ui.label(format!("{:.1}", v * f));
+                                } else {
+                                    ui.label("-");
+                                }
+                                if let Some(b) = r.best_est_1rm {
+                                    ui.label(format!("{:.1}", b * f));
+                                } else {
+                                    ui.label("-");
+                                }
+                                ui.end_row();
+                            }
+                        });
+                });
+            self.show_personal_records = open;
         }
 
         if self.show_about {
@@ -2519,6 +2581,7 @@ mod tests {
         s.show_body_part_volume = true;
         s.show_exercise_volume = true;
         s.show_exercise_stats = true;
+        s.show_personal_records = true;
         s.show_exercise_panel = false;
         s.body_part_volume_aggregation = VolumeAggregation::Monthly;
         s.auto_load_last = false;

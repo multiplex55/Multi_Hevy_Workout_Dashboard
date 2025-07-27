@@ -30,6 +30,17 @@ pub struct ExerciseStats {
     pub volume_trend: Option<f32>,
 }
 
+/// Personal record values for a single exercise.
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ExerciseRecord {
+    /// Highest weight lifted in any set.
+    pub max_weight: Option<f32>,
+    /// Maximum training volume (weight * reps) for a single set.
+    pub max_volume: Option<f32>,
+    /// Best estimated one-rep max across all sets.
+    pub best_est_1rm: Option<f32>,
+}
+
 /// Aggregate per-exercise statistics from a slice of workout entries.
 ///
 /// The data can be limited to an optional date range. Invalid dates are
@@ -115,6 +126,50 @@ pub fn aggregate_sets_by_body_part(
         if let (Some(bp), Some(d)) = (body_part_for(&e.exercise), parse_date(&e.date)) {
             if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                 *map.entry(bp.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+    map
+}
+
+/// Determine personal records for each exercise.
+///
+/// Returns the maximum weight, volume and estimated one-rep max found in the
+/// provided entries for every exercise. Only entries within the optional date
+/// range are considered.
+pub fn personal_records(
+    entries: &[WorkoutEntry],
+    formula: OneRmFormula,
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> HashMap<String, ExerciseRecord> {
+    let mut map: HashMap<String, ExerciseRecord> = HashMap::new();
+    for e in entries {
+        if let Some(d) = parse_date(&e.date) {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let rec = map.entry(e.exercise.clone()).or_default();
+                rec.max_weight = match rec.max_weight {
+                    Some(w) if w >= e.weight => Some(w),
+                    _ => Some(e.weight),
+                };
+                let vol = e.weight * e.reps as f32;
+                rec.max_volume = match rec.max_volume {
+                    Some(v) if v >= vol => Some(v),
+                    _ => Some(vol),
+                };
+                let est = match formula {
+                    OneRmFormula::Epley => e.weight * (1.0 + e.reps as f32 / 30.0),
+                    OneRmFormula::Brzycki => {
+                        if e.reps >= 37 {
+                            continue;
+                        }
+                        e.weight * 36.0 / (37.0 - e.reps as f32)
+                    }
+                };
+                rec.best_est_1rm = match rec.best_est_1rm {
+                    Some(b) if b >= est => Some(b),
+                    _ => Some(est),
+                };
             }
         }
     }
@@ -430,5 +485,25 @@ mod tests {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn test_personal_records() {
+        let entries = sample_entries();
+        let map = personal_records(&entries, OneRmFormula::Epley, None, None);
+
+        let squat = map.get("Squat").unwrap();
+        assert!((squat.max_weight.unwrap() - 105.0).abs() < 1e-6);
+        assert!((squat.max_volume.unwrap() - 525.0).abs() < 1e-6);
+        assert!((squat.best_est_1rm.unwrap() - 122.5).abs() < 1e-3);
+
+        let bench = map.get("Bench").unwrap();
+        assert!((bench.max_weight.unwrap() - 80.0).abs() < 1e-6);
+        assert!((bench.max_volume.unwrap() - 400.0).abs() < 1e-6);
+        assert!((bench.best_est_1rm.unwrap() - 93.3333).abs() < 1e-3);
+
+        let deadlift = map.get("Deadlift").unwrap();
+        assert!((deadlift.max_weight.unwrap() - 120.0).abs() < 1e-6);
+        assert!((deadlift.max_volume.unwrap() - 600.0).abs() < 1e-6);
     }
 }
