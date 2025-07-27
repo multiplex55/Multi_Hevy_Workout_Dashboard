@@ -419,6 +419,37 @@ fn ema_points(points: &[[f64; 2]], alpha: f64) -> Vec<[f64; 2]> {
     out
 }
 
+/// Generate a simple trend line for the given set of points using
+/// linear regression.
+///
+/// Returns a pair of points representing the start and end of the
+/// regression line across the provided data range.
+pub fn trend_line_points(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
+    if points.len() < 2 {
+        return Vec::new();
+    }
+
+    let n = points.len() as f64;
+    let mean_x: f64 = points.iter().map(|p| p[0]).sum::<f64>() / n;
+    let mean_y: f64 = points.iter().map(|p| p[1]).sum::<f64>() / n;
+
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for p in points {
+        num += (p[0] - mean_x) * (p[1] - mean_y);
+        den += (p[0] - mean_x) * (p[0] - mean_x);
+    }
+    let slope = if den == 0.0 { 0.0 } else { num / den };
+    let intercept = mean_y - slope * mean_x;
+
+    let x_start = points.first().unwrap()[0];
+    let x_end = points.last().unwrap()[0];
+    vec![
+        [x_start, slope * x_start + intercept],
+        [x_end, slope * x_end + intercept],
+    ]
+}
+
 /// Create a line plot of total training volume per day.
 ///
 /// Training volume is calculated as `weight * reps` for each set. Only entries
@@ -685,6 +716,13 @@ mod tests {
         for (a, b) in ema.iter().zip(expected.iter()) {
             assert!((a[1] - b[1]).abs() < 1e-6);
         }
+    }
+
+    #[test]
+    fn test_trend_line_points() {
+        let pts = vec![[0.0, 1.0], [1.0, 3.0], [2.0, 5.0]];
+        let trend = trend_line_points(&pts);
+        assert_eq!(trend, vec![[0.0, 1.0], [2.0, 5.0]]);
     }
 
     fn line_points(line: Line) -> Vec<[f64; 2]> {

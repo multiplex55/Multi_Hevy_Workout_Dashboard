@@ -16,7 +16,7 @@ mod plotting;
 use plotting::{
     OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
     body_part_volume_line, estimated_1rm_line, exercise_volume_line, sets_per_day_bar,
-    training_volume_line, unique_exercises, weight_over_time_line,
+    training_volume_line, trend_line_points, unique_exercises, weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -156,6 +156,10 @@ struct Settings {
     #[serde(default)]
     show_exercise_panel: bool,
     highlight_max: bool,
+    #[serde(default)]
+    show_weight_trend: bool,
+    #[serde(default)]
+    show_volume_trend: bool,
     show_smoothed: bool,
     ma_window: usize,
     smoothing_method: SmoothingMethod,
@@ -241,6 +245,8 @@ impl Default for Settings {
             show_exercise_stats: false,
             show_exercise_panel: true,
             highlight_max: true,
+            show_weight_trend: false,
+            show_volume_trend: false,
             show_smoothed: false,
             smoothing_method: SmoothingMethod::SimpleMA,
             ma_window: 5,
@@ -690,6 +696,12 @@ impl MyApp {
                                     all_points.push(*p);
                                 }
                                 plot_ui.line(lw.line);
+                                if self.settings.show_weight_trend && lw.max_point.is_some() {
+                                    let trend = trend_line_points(&lw.points);
+                                    if trend.len() == 2 {
+                                        plot_ui.line(Line::new(PlotPoints::from(trend)).name("Trend"));
+                                    }
+                                }
                                 if self.settings.highlight_max {
                                     if let (Some(p), Some(label)) =
                                         (lw.max_point, lw.label.as_deref())
@@ -874,7 +886,8 @@ impl MyApp {
                             } else {
                                 None
                             };
-                            for l in training_volume_line(
+                            let mut raw_points: Vec<[f64; 2]> = Vec::new();
+                            for (idx, l) in training_volume_line(
                                 filtered,
                                 self.settings.start_date,
                                 self.settings.end_date,
@@ -883,13 +896,22 @@ impl MyApp {
                                 self.settings.weight_unit,
                                 ma,
                                 self.settings.smoothing_method,
-                            ) {
+                            ).into_iter().enumerate() {
                                 if let PlotGeometry::Points(pts) = l.geometry() {
                                     for p in pts {
                                         all_points.push([p.x, p.y]);
+                                        if idx == 0 {
+                                            raw_points.push([p.x, p.y]);
+                                        }
                                     }
                                 }
                                 plot_ui.line(l);
+                            }
+                            if self.settings.show_volume_trend && raw_points.len() > 1 {
+                                let trend = trend_line_points(&raw_points);
+                                if trend.len() == 2 {
+                                    plot_ui.line(Line::new(PlotPoints::from(trend)).name("Trend"));
+                                }
                             }
                             if self.settings.volume_aggregation != VolumeAggregation::Daily {
                                 let pts = aggregated_volume_points(
@@ -1667,8 +1689,26 @@ impl App for MyApp {
                                     }
                                     if ui
                                         .checkbox(
+                                            &mut self.settings.show_weight_trend,
+                                            "Show Weight Trend",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    if ui
+                                        .checkbox(
                                             &mut self.settings.show_smoothed,
                                             "Show moving average",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    if ui
+                                        .checkbox(
+                                            &mut self.settings.show_volume_trend,
+                                            "Show Volume Trend",
                                         )
                                         .changed()
                                     {
@@ -2321,6 +2361,8 @@ mod tests {
         s.show_weight = false;
         s.show_est_1rm = false;
         s.show_sets = false;
+        s.show_weight_trend = true;
+        s.show_volume_trend = true;
         s.show_smoothed = true;
         s.ma_window = 3;
         s.smoothing_method = SmoothingMethod::EMA;
