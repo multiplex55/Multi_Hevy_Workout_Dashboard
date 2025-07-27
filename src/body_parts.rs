@@ -216,3 +216,13 @@ pub fn info_for(exercise: &str) -> Option<&'static ExerciseInfo> {
 pub fn body_part_for(exercise: &str) -> Option<&'static str> {
     info_for(exercise).map(|i| i.primary)
 }
+
+/// Return a sorted list of all unique primary muscle groups.
+pub fn primary_muscle_groups() -> Vec<&'static str> {
+    use std::collections::BTreeSet;
+    let mut set = BTreeSet::new();
+    for info in EXERCISES.values() {
+        set.insert(info.primary);
+    }
+    set.into_iter().collect()
+}
