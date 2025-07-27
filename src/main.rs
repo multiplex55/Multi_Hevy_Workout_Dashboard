@@ -468,6 +468,7 @@ impl MyApp {
         ascending: bool,
     ) {
         stats.sort_by(|a, b| {
+            use std::cmp::Ordering;
             let ord = match sort {
                 SummarySort::Exercise => a.0.cmp(&b.0),
                 SummarySort::Sets => a.1.total_sets.cmp(&b.1.total_sets),
@@ -475,20 +476,25 @@ impl MyApp {
                 SummarySort::Volume => {
                     a.1.total_volume
                         .partial_cmp(&b.1.total_volume)
-                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .unwrap_or(Ordering::Equal)
                 }
                 SummarySort::MaxWeight => {
                     a.1.max_weight
                         .unwrap_or(0.0)
                         .partial_cmp(&b.1.max_weight.unwrap_or(0.0))
-                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .unwrap_or(Ordering::Equal)
                 }
                 SummarySort::Best1Rm => {
                     a.1.best_est_1rm
                         .unwrap_or(0.0)
                         .partial_cmp(&b.1.best_est_1rm.unwrap_or(0.0))
-                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .unwrap_or(Ordering::Equal)
                 }
+            };
+            let ord = if ord == Ordering::Equal {
+                a.0.cmp(&b.0)
+            } else {
+                ord
             };
             if ascending { ord } else { ord.reverse() }
         });
@@ -699,7 +705,8 @@ impl MyApp {
                                 if self.settings.show_weight_trend && lw.max_point.is_some() {
                                     let trend = trend_line_points(&lw.points);
                                     if trend.len() == 2 {
-                                        plot_ui.line(Line::new(PlotPoints::from(trend)).name("Trend"));
+                                        plot_ui
+                                            .line(Line::new(PlotPoints::from(trend)).name("Trend"));
                                     }
                                 }
                                 if self.settings.highlight_max {
@@ -896,7 +903,10 @@ impl MyApp {
                                 self.settings.weight_unit,
                                 ma,
                                 self.settings.smoothing_method,
-                            ).into_iter().enumerate() {
+                            )
+                            .into_iter()
+                            .enumerate()
+                            {
                                 if let PlotGeometry::Points(pts) = l.geometry() {
                                     for p in pts {
                                         all_points.push([p.x, p.y]);
@@ -1138,7 +1148,7 @@ impl App for MyApp {
                             .add_filter("CSV", &["csv"])
                             .save_file()
                         {
-                            let exercises = analysis::aggregate_exercise_stats(
+                            let mut exercises = analysis::aggregate_exercise_stats(
                                 &self.workouts,
                                 self.settings.one_rm_formula,
                                 self.settings.start_date,
@@ -1146,6 +1156,11 @@ impl App for MyApp {
                             )
                             .into_iter()
                             .collect::<Vec<_>>();
+                            MyApp::sort_summary_stats(
+                                &mut exercises,
+                                self.summary_sort,
+                                self.summary_sort_ascending,
+                            );
                             match path
                                 .extension()
                                 .and_then(|e| e.to_str())
@@ -1236,6 +1251,11 @@ impl App for MyApp {
                         )
                         .into_iter()
                         .collect::<Vec<_>>();
+                        MyApp::sort_summary_stats(
+                            &mut stats,
+                            self.summary_sort,
+                            self.summary_sort_ascending,
+                        );
                         let mut summary_sort = self.summary_sort;
                         let mut summary_sort_ascending = self.summary_sort_ascending;
                         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -1440,7 +1460,9 @@ impl App for MyApp {
                     let _ = ctx.input(|i| i.pointer.interact_pos());
                     plot_resp.response.context_menu(|ui| {
                         if ui.button("Export CSV").clicked() {
-                            if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).save_file() {
+                            if let Some(path) =
+                                FileDialog::new().add_filter("CSV", &["csv"]).save_file()
+                            {
                                 let entries: Vec<WorkoutEntry> = self
                                     .filtered_entries()
                                     .into_iter()
