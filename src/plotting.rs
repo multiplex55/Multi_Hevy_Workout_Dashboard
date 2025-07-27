@@ -37,48 +37,54 @@ pub struct LineWithMarker {
     pub max_point: Option<[f64; 2]>,
 }
 
-/// Generate a line plot of weight over time for a given exercise.
+/// Generate a line plot of weight over time for one or more exercises.
 ///
-/// Only entries for `exercise` within the optional date range are used. Invalid
-/// dates are ignored.
+/// Only entries for the listed `exercises` within the optional date range are
+/// used. Invalid dates are ignored. A separate line is returned for each
+/// exercise.
 pub fn weight_over_time_line(
     entries: &[WorkoutEntry],
-    exercise: &str,
+    exercises: &[String],
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
     x_axis: XAxis,
     y_axis: YAxis,
     unit: WeightUnit,
-) -> LineWithMarker {
-    let mut points = Vec::new();
-    let mut idx = 0usize;
-    let mut max_weight = f64::NEG_INFINITY;
-    let mut max_point = None;
-    for e in entries.iter().filter(|e| e.exercise == exercise) {
-        if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
-            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                let x = match x_axis {
-                    XAxis::Date => d.num_days_from_ce() as f64,
-                    XAxis::WorkoutIndex => idx as f64,
-                };
-                let f = unit.factor() as f64;
-                let y = match y_axis {
-                    YAxis::Weight => e.weight as f64 * f,
-                    YAxis::Volume => e.weight as f64 * f * e.reps as f64,
-                };
-                if e.weight as f64 * f > max_weight {
-                    max_weight = e.weight as f64 * f;
-                    max_point = Some([x, y]);
+) -> Vec<LineWithMarker> {
+    let mut lines = Vec::new();
+    for exercise in exercises {
+        let mut points = Vec::new();
+        let mut idx = 0usize;
+        let mut max_weight = f64::NEG_INFINITY;
+        let mut max_point = None;
+        for e in entries.iter().filter(|e| e.exercise == *exercise) {
+            if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2)
+                {
+                    let x = match x_axis {
+                        XAxis::Date => d.num_days_from_ce() as f64,
+                        XAxis::WorkoutIndex => idx as f64,
+                    };
+                    let f = unit.factor() as f64;
+                    let y = match y_axis {
+                        YAxis::Weight => e.weight as f64 * f,
+                        YAxis::Volume => e.weight as f64 * f * e.reps as f64,
+                    };
+                    if e.weight as f64 * f > max_weight {
+                        max_weight = e.weight as f64 * f;
+                        max_point = Some([x, y]);
+                    }
+                    points.push([x, y]);
+                    idx += 1;
                 }
-                points.push([x, y]);
-                idx += 1;
             }
         }
+        lines.push(LineWithMarker {
+            line: Line::new(PlotPoints::from(points)).name(exercise),
+            max_point,
+        });
     }
-    LineWithMarker {
-        line: Line::new(PlotPoints::from(points)).name("Weight"),
-        max_point,
-    }
+    lines
 }
 
 /// Generate a line plot of the estimated one-rep max over time for a given
@@ -89,47 +95,54 @@ pub fn weight_over_time_line(
 /// included.
 pub fn estimated_1rm_line(
     entries: &[WorkoutEntry],
-    exercise: &str,
+    exercises: &[String],
     formula: OneRmFormula,
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
     x_axis: XAxis,
     unit: WeightUnit,
-) -> LineWithMarker {
-    let mut points = Vec::new();
-    let mut idx = 0usize;
-    let mut max_est = f64::NEG_INFINITY;
-    let mut max_point = None;
-    for e in entries.iter().filter(|e| e.exercise == exercise) {
-        if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
-            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                let f = unit.factor() as f64;
-                let est = match formula {
-                    OneRmFormula::Epley => e.weight as f64 * f * (1.0 + e.reps as f64 / 30.0),
-                    OneRmFormula::Brzycki => {
-                        if e.reps >= 37 {
-                            continue;
+) -> Vec<LineWithMarker> {
+    let mut lines = Vec::new();
+    for exercise in exercises {
+        let mut points = Vec::new();
+        let mut idx = 0usize;
+        let mut max_est = f64::NEG_INFINITY;
+        let mut max_point = None;
+        for e in entries.iter().filter(|e| e.exercise == *exercise) {
+            if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2)
+                {
+                    let f = unit.factor() as f64;
+                    let est = match formula {
+                        OneRmFormula::Epley => {
+                            e.weight as f64 * f * (1.0 + e.reps as f64 / 30.0)
                         }
-                        e.weight as f64 * f * 36.0 / (37.0 - e.reps as f64)
+                        OneRmFormula::Brzycki => {
+                            if e.reps >= 37 {
+                                continue;
+                            }
+                            e.weight as f64 * f * 36.0 / (37.0 - e.reps as f64)
+                        }
+                    };
+                    let x = match x_axis {
+                        XAxis::Date => d.num_days_from_ce() as f64,
+                        XAxis::WorkoutIndex => idx as f64,
+                    };
+                    if est > max_est {
+                        max_est = est;
+                        max_point = Some([x, est]);
                     }
-                };
-                let x = match x_axis {
-                    XAxis::Date => d.num_days_from_ce() as f64,
-                    XAxis::WorkoutIndex => idx as f64,
-                };
-                if est > max_est {
-                    max_est = est;
-                    max_point = Some([x, est]);
+                    points.push([x, est]);
+                    idx += 1;
                 }
-                points.push([x, est]);
-                idx += 1;
             }
         }
+        lines.push(LineWithMarker {
+            line: Line::new(PlotPoints::from(points)).name(exercise),
+            max_point,
+        });
     }
-    LineWithMarker {
-        line: Line::new(PlotPoints::from(points)).name("1RM Est"),
-        max_point,
-    }
+    lines
 }
 
 /// Create a bar chart of how many sets were performed on each day.
@@ -334,16 +347,18 @@ mod tests {
         let d2 = 1.0;
         let res = weight_over_time_line(
             &sample_entries(),
-            "Squat",
+            &["Squat".to_string()],
             None,
             None,
             XAxis::WorkoutIndex,
             YAxis::Weight,
             WeightUnit::Lbs,
         );
+        assert_eq!(res.len(), 1);
+        let lw = res.into_iter().next().unwrap();
         let expected = vec![[d1, 100.0], [d2, 105.0]];
-        assert_eq!(line_points(res.line), expected);
-        assert_eq!(res.max_point, Some([d2, 105.0]));
+        assert_eq!(line_points(lw.line), expected);
+        assert_eq!(lw.max_point, Some([d2, 105.0]));
     }
 
     #[test]
@@ -379,31 +394,35 @@ mod tests {
         let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
         let res_e = estimated_1rm_line(
             &sample_entries(),
-            "Squat",
+            &["Squat".to_string()],
             OneRmFormula::Epley,
             None,
             None,
             XAxis::Date,
             WeightUnit::Lbs,
         );
+        assert_eq!(res_e.len(), 1);
         let expected_e = vec![
             [d1.num_days_from_ce() as f64, 100.0 * (1.0 + 5.0 / 30.0)],
             [d3.num_days_from_ce() as f64, 105.0 * (1.0 + 5.0 / 30.0)],
         ];
-        assert_eq!(line_points(res_e.line), expected_e);
-        assert_eq!(res_e.max_point, Some(expected_e[1]));
+        let lw_e = res_e.into_iter().next().unwrap();
+        assert_eq!(line_points(lw_e.line), expected_e);
+        assert_eq!(lw_e.max_point, Some(expected_e[1]));
 
         let res_b = estimated_1rm_line(
             &sample_entries(),
-            "Squat",
+            &["Squat".to_string()],
             OneRmFormula::Brzycki,
             Some(d3),
             None,
             XAxis::Date,
             WeightUnit::Lbs,
         );
+        assert_eq!(res_b.len(), 1);
+        let lw_b = res_b.into_iter().next().unwrap();
         let expected_b = vec![[d3.num_days_from_ce() as f64, 105.0 * 36.0 / 32.0]];
-        assert_eq!(line_points(res_b.line), expected_b);
-        assert_eq!(res_b.max_point, Some(expected_b[0]));
+        assert_eq!(line_points(lw_b.line), expected_b);
+        assert_eq!(lw_b.max_point, Some(expected_b[0]));
     }
 }
