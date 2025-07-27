@@ -147,6 +147,8 @@ struct Settings {
     smoothing_method: SmoothingMethod,
     #[serde(default)]
     volume_aggregation: VolumeAggregation,
+    #[serde(default)]
+    body_part_volume_aggregation: VolumeAggregation,
     weight_unit: WeightUnit,
     one_rm_formula: OneRmFormula,
     start_date: Option<NaiveDate>,
@@ -218,6 +220,7 @@ impl Default for Settings {
             smoothing_method: SmoothingMethod::SimpleMA,
             ma_window: 5,
             volume_aggregation: VolumeAggregation::Weekly,
+            body_part_volume_aggregation: VolumeAggregation::Weekly,
             weight_unit: WeightUnit::Lbs,
             one_rm_formula: OneRmFormula::Epley,
             start_date: None,
@@ -692,6 +695,7 @@ impl MyApp {
                         self.settings.end_date,
                         self.settings.x_axis,
                         self.settings.weight_unit,
+                        self.settings.body_part_volume_aggregation,
                         ma,
                     ) {
                         if let PlotGeometry::Points(pts) = l.geometry() {
@@ -1512,6 +1516,36 @@ impl App for MyApp {
                         }
                     });
                     ui.horizontal(|ui| {
+                        ui.label("Body part agg:");
+                        let prev = self.settings.body_part_volume_aggregation;
+                        egui::ComboBox::from_id_source("body_part_volume_agg_setting")
+                            .selected_text(match self.settings.body_part_volume_aggregation {
+                                VolumeAggregation::Daily => "Daily",
+                                VolumeAggregation::Weekly => "Weekly",
+                                VolumeAggregation::Monthly => "Monthly",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.settings.body_part_volume_aggregation,
+                                    VolumeAggregation::Daily,
+                                    "Daily",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.body_part_volume_aggregation,
+                                    VolumeAggregation::Weekly,
+                                    "Weekly",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.body_part_volume_aggregation,
+                                    VolumeAggregation::Monthly,
+                                    "Monthly",
+                                );
+                            });
+                        if prev != self.settings.body_part_volume_aggregation {
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
                         ui.label("Set type filter:");
                         let mut st = self.settings.set_type_filter.clone().unwrap_or_default();
                         if ui.text_edit_singleline(&mut st).changed() {
@@ -1700,6 +1734,7 @@ mod tests {
         s.max_rpe = Some(9.0);
         s.notes_filter = Some("tempo".into());
         s.show_body_part_volume = true;
+        s.body_part_volume_aggregation = VolumeAggregation::Monthly;
         s.auto_load_last = false;
         s.last_file = Some("/tmp/test.csv".into());
         s.check_prs = true;
