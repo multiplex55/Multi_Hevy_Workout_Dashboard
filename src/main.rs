@@ -162,7 +162,7 @@ enum SortColumn {
 struct MyApp {
     workouts: Vec<WorkoutEntry>,
     stats: BasicStats,
-    selected_exercise: Option<String>,
+    selected_exercises: Vec<String>,
     search_query: String,
     table_filter: String,
     last_loaded: Option<String>,
@@ -181,7 +181,7 @@ impl Default for MyApp {
         Self {
             workouts: Vec::new(),
             stats: BasicStats::default(),
-            selected_exercise: None,
+            selected_exercises: Vec::new(),
             search_query: String::new(),
             table_filter: String::new(),
             last_loaded: None,
@@ -332,11 +332,14 @@ impl App for MyApp {
                 }
 
                 ui.separator();
-                if let Some(ref ex) = self.selected_exercise {
-                    ui.label(format!("Selected exercise: {}", ex));
+                if self.selected_exercises.is_empty() {
+                    ui.label("No exercises selected");
+                    ui.label("Select exercises from the dropdown");
                 } else {
-                    ui.label("No exercise selected");
-                    ui.label("Select an exercise from the dropdown");
+                    ui.label(format!(
+                        "Selected: {}",
+                        self.selected_exercises.join(", ")
+                    ));
                 }
 
                 ui.separator();
@@ -410,14 +413,17 @@ impl App for MyApp {
                             self.settings.start_date,
                             self.settings.end_date,
                         );
-                        if self.selected_exercise.is_none() {
-                            self.selected_exercise = unique_exercises(
+                        if self.selected_exercises.is_empty() {
+                            if let Some(first) = unique_exercises(
                                 &self.workouts,
                                 self.settings.start_date,
                                 self.settings.end_date,
                             )
                             .into_iter()
-                            .next();
+                            .next()
+                            {
+                                self.selected_exercises.push(first);
+                            }
                         }
                         self.last_loaded = Some(filename);
                         self.toast_start = Some(Instant::now());
@@ -451,76 +457,87 @@ impl App for MyApp {
                     let q = self.search_query.to_lowercase();
                     exercises.retain(|e| e.to_lowercase().contains(&q));
                 }
-                if self.selected_exercise.is_none() {
-                    self.selected_exercise = exercises.first().cloned();
+                if self.selected_exercises.is_empty() {
+                    if let Some(first) = exercises.first().cloned() {
+                        self.selected_exercises.push(first);
+                    }
                 }
                 ui.horizontal(|ui| {
                     ui.label("Filter:");
                     ui.text_edit_singleline(&mut self.search_query);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Exercise:");
+                    ui.label("Exercises:");
                     egui::ComboBox::from_id_source("exercise_combo")
                         .selected_text(
-                            self.selected_exercise
-                                .as_ref()
-                                .cloned()
-                                .unwrap_or_else(|| "".to_string()),
+                            if self.selected_exercises.is_empty() {
+                                String::new()
+                            } else {
+                                self.selected_exercises.join(", ")
+                            },
                         )
                         .show_ui(ui, |ui| {
                             for ex in &exercises {
-                                ui.selectable_value(
-                                    &mut self.selected_exercise,
-                                    Some(ex.clone()),
-                                    ex,
-                                );
+                                let mut sel = self.selected_exercises.contains(ex);
+                                if ui.checkbox(&mut sel, ex).changed() {
+                                    if sel {
+                                        if !self.selected_exercises.contains(ex) {
+                                            self.selected_exercises.push(ex.clone());
+                                        }
+                                    } else {
+                                        self.selected_exercises.retain(|e| e != ex);
+                                    }
+                                }
                             }
                         });
                 });
 
-                if let Some(ref ex) = self.selected_exercise {
+                if !self.selected_exercises.is_empty() {
+                    let sel: Vec<String> = self.selected_exercises.clone();
                     let plot_resp = Plot::new("exercise_plot").show(ui, |plot_ui| {
                         if self.settings.show_weight {
-                            let lw = weight_over_time_line(
+                            for lw in weight_over_time_line(
                                 &self.workouts,
-                                ex,
+                                &sel,
                                 self.settings.start_date,
                                 self.settings.end_date,
                                 self.settings.x_axis,
                                 self.settings.y_axis,
                                 self.settings.weight_unit,
-                            );
-                            plot_ui.line(lw.line);
-                            if self.settings.highlight_max {
-                                if let Some(p) = lw.max_point {
-                                    plot_ui.points(
-                                        Points::new(vec![p])
-                                            .shape(MarkerShape::Diamond)
-                                            .color(egui::Color32::RED)
-                                            .name("Max Weight"),
-                                    );
+                            ) {
+                                plot_ui.line(lw.line);
+                                if self.settings.highlight_max {
+                                    if let Some(p) = lw.max_point {
+                                        plot_ui.points(
+                                            Points::new(vec![p])
+                                                .shape(MarkerShape::Diamond)
+                                                .color(egui::Color32::RED)
+                                                .name("Max Weight"),
+                                        );
+                                    }
                                 }
                             }
                         }
                         if self.settings.show_est_1rm {
-                            let lr = estimated_1rm_line(
+                            for lr in estimated_1rm_line(
                                 &self.workouts,
-                                ex,
+                                &sel,
                                 self.settings.one_rm_formula,
                                 self.settings.start_date,
                                 self.settings.end_date,
                                 self.settings.x_axis,
                                 self.settings.weight_unit,
-                            );
-                            plot_ui.line(lr.line);
-                            if self.settings.highlight_max {
-                                if let Some(p) = lr.max_point {
-                                    plot_ui.points(
-                                        Points::new(vec![p])
-                                            .shape(MarkerShape::Circle)
-                                            .color(egui::Color32::BLUE)
-                                            .name("Max 1RM"),
-                                    );
+                            ) {
+                                plot_ui.line(lr.line);
+                                if self.settings.highlight_max {
+                                    if let Some(p) = lr.max_point {
+                                        plot_ui.points(
+                                            Points::new(vec![p])
+                                                .shape(MarkerShape::Circle)
+                                                .color(egui::Color32::BLUE)
+                                                .name("Max 1RM"),
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -535,9 +552,14 @@ impl App for MyApp {
                             ));
                         }
                         if self.settings.show_sets {
+                            let ex_for_sets = if sel.len() == 1 {
+                                Some(sel[0].as_str())
+                            } else {
+                                None
+                            };
                             plot_ui.bar_chart(sets_per_day_bar(
                                 &self.workouts,
-                                Some(ex),
+                                ex_for_sets,
                                 self.settings.start_date,
                                 self.settings.end_date,
                             ));
