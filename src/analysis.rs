@@ -122,23 +122,31 @@ pub fn compute_stats(
 
     log::info!("Computing statistics for {} entries", entries.len());
 
-    // Map date -> sets count within range
-    let mut sets_per_day: HashMap<NaiveDate, usize> = HashMap::new();
+    // Map unique workout identifier -> sets count within range
+    let mut sets_per_workout: HashMap<String, usize> = HashMap::new();
+    // Track the date of each unique workout for gap calculations
+    let mut workout_dates: HashMap<String, NaiveDate> = HashMap::new();
     let mut total_reps = 0u32;
     let mut exercise_counts: HashMap<&str, usize> = HashMap::new();
 
     for e in entries {
         if let Some(d) = parse_date(&e.date) {
             if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                *sets_per_day.entry(d).or_insert(0) += 1;
+                let id = format!(
+                    "{}{}",
+                    e.raw.title.as_deref().unwrap_or(""),
+                    e.raw.start_time
+                );
+                *sets_per_workout.entry(id.clone()).or_insert(0) += 1;
+                workout_dates.entry(id).or_insert(d);
                 total_reps += e.reps;
                 *exercise_counts.entry(e.exercise.as_str()).or_insert(0) += 1;
             }
         }
     }
 
-    let total_workouts = sets_per_day.len();
-    let total_sets: usize = sets_per_day.values().sum();
+    let total_workouts = sets_per_workout.len();
+    let total_sets: usize = sets_per_workout.values().sum();
 
     if total_workouts == 0 {
         log::warn!("No valid workout dates found");
@@ -149,7 +157,7 @@ pub fn compute_stats(
     let avg_reps_per_set = total_reps as f32 / total_sets as f32;
 
     // Days between workouts
-    let mut dates: Vec<NaiveDate> = sets_per_day.keys().cloned().collect();
+    let mut dates: Vec<NaiveDate> = workout_dates.values().cloned().collect();
     dates.sort();
     let mut total_gap_days = 0i64;
     for w in dates.windows(2) {
@@ -189,28 +197,44 @@ mod tests {
                 exercise: "Squat".into(),
                 weight: 100.0,
                 reps: 5,
-                raw: RawWorkoutRow::default(),
+                raw: RawWorkoutRow {
+                    title: Some("Workout 1".into()),
+                    start_time: "01 Jan 2024, 10:00".into(),
+                    ..RawWorkoutRow::default()
+                },
             },
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
                 weight: 80.0,
                 reps: 5,
-                raw: RawWorkoutRow::default(),
+                raw: RawWorkoutRow {
+                    title: Some("Workout 1".into()),
+                    start_time: "01 Jan 2024, 10:00".into(),
+                    ..RawWorkoutRow::default()
+                },
             },
             WorkoutEntry {
                 date: "2024-01-03".into(),
                 exercise: "Squat".into(),
                 weight: 105.0,
                 reps: 5,
-                raw: RawWorkoutRow::default(),
+                raw: RawWorkoutRow {
+                    title: Some("Workout 2".into()),
+                    start_time: "03 Jan 2024, 10:00".into(),
+                    ..RawWorkoutRow::default()
+                },
             },
             WorkoutEntry {
                 date: "2024-01-05".into(),
                 exercise: "Deadlift".into(),
                 weight: 120.0,
                 reps: 5,
-                raw: RawWorkoutRow::default(),
+                raw: RawWorkoutRow {
+                    title: Some("Workout 3".into()),
+                    start_time: "05 Jan 2024, 10:00".into(),
+                    ..RawWorkoutRow::default()
+                },
             },
         ]
     }
