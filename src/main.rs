@@ -478,12 +478,17 @@ impl MyApp {
                         }
                         plot_ui.line(lw.line);
                         if self.settings.highlight_max {
-                            if let Some(p) = lw.max_point {
+                            if let (Some(p), Some(label)) = (lw.max_point, lw.label.as_deref()) {
+                                let color = match label {
+                                    "Max Weight" => egui::Color32::RED,
+                                    "Max Volume" => egui::Color32::GREEN,
+                                    _ => egui::Color32::WHITE,
+                                };
                                 plot_ui.points(
                                     Points::new(vec![p])
                                         .shape(MarkerShape::Diamond)
-                                        .color(egui::Color32::RED)
-                                        .name("Max Weight"),
+                                        .color(color)
+                                        .name(label),
                                 );
                             }
                         }
@@ -511,12 +516,15 @@ impl MyApp {
                         }
                         plot_ui.line(lr.line);
                         if self.settings.highlight_max {
-                            if let Some(p) = lr.max_point {
+                            if let (Some(p), Some(label)) = (lr.max_point, lr.label.as_deref()) {
+                                let (shape, color) = match label {
+                                    "Max 1RM" => (MarkerShape::Circle, egui::Color32::BLUE),
+                                    "Max Weight" => (MarkerShape::Diamond, egui::Color32::RED),
+                                    "Max Volume" => (MarkerShape::Diamond, egui::Color32::GREEN),
+                                    _ => (MarkerShape::Circle, egui::Color32::WHITE),
+                                };
                                 plot_ui.points(
-                                    Points::new(vec![p])
-                                        .shape(MarkerShape::Circle)
-                                        .color(egui::Color32::BLUE)
-                                        .name("Max 1RM"),
+                                    Points::new(vec![p]).shape(shape).color(color).name(label),
                                 );
                             }
                         }

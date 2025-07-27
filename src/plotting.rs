@@ -63,6 +63,7 @@ pub struct LineWithMarker {
     pub line: Line,
     pub points: Vec<[f64; 2]>,
     pub max_point: Option<[f64; 2]>,
+    pub label: Option<String>,
 }
 
 /// Generate a line plot of weight over time for one or more exercises.
@@ -85,7 +86,7 @@ pub fn weight_over_time_line(
     for exercise in exercises {
         let mut points = Vec::new();
         let mut idx = 0usize;
-        let mut max_weight = f64::NEG_INFINITY;
+        let mut max_val = f64::NEG_INFINITY;
         let mut max_point = None;
         for e in entries.iter().filter(|e| e.exercise == *exercise) {
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
@@ -99,8 +100,12 @@ pub fn weight_over_time_line(
                         YAxis::Weight => e.weight as f64 * f,
                         YAxis::Volume => e.weight as f64 * f * e.reps as f64,
                     };
-                    if e.weight as f64 * f > max_weight {
-                        max_weight = e.weight as f64 * f;
+                    let cmp = match y_axis {
+                        YAxis::Weight => e.weight as f64 * f,
+                        YAxis::Volume => y,
+                    };
+                    if cmp > max_val {
+                        max_val = cmp;
                         max_point = Some([x, y]);
                     }
                     points.push([x, y]);
@@ -112,6 +117,10 @@ pub fn weight_over_time_line(
             line: Line::new(PlotPoints::from(points.clone())).name(exercise),
             points: points.clone(),
             max_point,
+            label: Some(match y_axis {
+                YAxis::Weight => "Max Weight".to_string(),
+                YAxis::Volume => "Max Volume".to_string(),
+            }),
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
@@ -127,6 +136,7 @@ pub fn weight_over_time_line(
                         .name(format!("{exercise} MA")),
                     points: smooth_points,
                     max_point: None,
+                    label: None,
                 });
             }
         }
@@ -187,6 +197,7 @@ pub fn estimated_1rm_line(
             line: Line::new(PlotPoints::from(points.clone())).name(exercise),
             points: points.clone(),
             max_point,
+            label: Some("Max 1RM".to_string()),
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
@@ -202,6 +213,7 @@ pub fn estimated_1rm_line(
                         .name(format!("{exercise} MA")),
                     points: smooth_points,
                     max_point: None,
+                    label: None,
                 });
             }
         }
@@ -664,6 +676,43 @@ mod tests {
         let expected = vec![[d1, 100.0], [d2, 105.0]];
         assert_eq!(line_points(lw.line), expected);
         assert_eq!(lw.max_point, Some([d2, 105.0]));
+        assert_eq!(lw.label.as_deref(), Some("Max Weight"));
+    }
+
+    #[test]
+    fn test_weight_over_time_volume_highlight() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Squat".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Squat".into(),
+                weight: 80.0,
+                reps: 10,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let res = weight_over_time_line(
+            &entries,
+            &["Squat".to_string()],
+            None,
+            None,
+            XAxis::WorkoutIndex,
+            YAxis::Volume,
+            WeightUnit::Lbs,
+            None,
+            SmoothingMethod::SimpleMA,
+        );
+        let lw = res.into_iter().next().unwrap();
+        let expected = vec![[0.0, 500.0], [1.0, 800.0]];
+        assert_eq!(line_points(lw.line), expected);
+        assert_eq!(lw.max_point, Some([1.0, 800.0]));
+        assert_eq!(lw.label.as_deref(), Some("Max Volume"));
     }
 
     #[test]
@@ -741,6 +790,7 @@ mod tests {
         let lw_e = res_e.into_iter().next().unwrap();
         assert_eq!(line_points(lw_e.line), expected_e);
         assert_eq!(lw_e.max_point, Some(expected_e[1]));
+        assert_eq!(lw_e.label.as_deref(), Some("Max 1RM"));
 
         let res_b = estimated_1rm_line(
             &sample_entries(),
@@ -758,5 +808,6 @@ mod tests {
         let expected_b = vec![[d3.num_days_from_ce() as f64, 105.0 * 36.0 / 32.0]];
         assert_eq!(line_points(lw_b.line), expected_b);
         assert_eq!(lw_b.max_point, Some(expected_b[0]));
+        assert_eq!(lw_b.label.as_deref(), Some("Max 1RM"));
     }
 }
