@@ -22,6 +22,7 @@ use capture::{crop_image, save_png};
 mod export;
 use export::{save_entries_csv, save_entries_json, save_stats_csv, save_stats_json};
 mod body_parts;
+use body_parts::ExerciseType;
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 struct WorkoutEntry {
@@ -117,6 +118,7 @@ struct Settings {
     y_axis: YAxis,
     set_type_filter: Option<String>,
     body_part_filter: Option<String>,
+    exercise_type_filter: Option<ExerciseType>,
     min_rpe: Option<f32>,
     max_rpe: Option<f32>,
     notes_filter: Option<String>,
@@ -174,6 +176,7 @@ impl Default for Settings {
             y_axis: YAxis::Weight,
             set_type_filter: None,
             body_part_filter: None,
+            exercise_type_filter: None,
             min_rpe: None,
             max_rpe: None,
             notes_filter: None,
@@ -394,6 +397,12 @@ impl MyApp {
         if let Some(ref bp) = self.settings.body_part_filter {
             match e.body_part() {
                 Some(p) if p.eq_ignore_ascii_case(bp) => {}
+                _ => return false,
+            }
+        }
+        if let Some(kind) = self.settings.exercise_type_filter {
+            match body_parts::info_for(&e.exercise).map(|i| i.kind) {
+                Some(k) if k == kind => {}
                 _ => return false,
             }
         }
@@ -1290,6 +1299,32 @@ impl App for MyApp {
                         }
                     });
                     ui.horizontal(|ui| {
+                        ui.label("Exercise type:");
+                        let prev = self.settings.exercise_type_filter;
+                        egui::ComboBox::from_id_source("exercise_type_filter_combo")
+                            .selected_text(match prev {
+                                Some(k) => format!("{:?}", k),
+                                None => "All".into(),
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.settings.exercise_type_filter,
+                                    None::<ExerciseType>,
+                                    "All",
+                                );
+                                for k in body_parts::ALL_EXERCISE_TYPES {
+                                    ui.selectable_value(
+                                        &mut self.settings.exercise_type_filter,
+                                        Some(k),
+                                        format!("{:?}", k),
+                                    );
+                                }
+                            });
+                        if prev != self.settings.exercise_type_filter {
+                            self.settings_dirty = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
                         ui.label("Min RPE:");
                         let mut min = self
                             .settings
@@ -1364,6 +1399,7 @@ mod tests {
         s.weight_unit = WeightUnit::Kg;
         s.set_type_filter = Some("working".into());
         s.body_part_filter = Some("Chest".into());
+        s.exercise_type_filter = Some(ExerciseType::Compound);
         s.min_rpe = Some(6.0);
         s.max_rpe = Some(9.0);
         s.notes_filter = Some("tempo".into());
@@ -1433,6 +1469,34 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
         let filtered = app.filtered_entries();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].exercise, "Bench");
+    }
+
+    #[test]
+    fn exercise_type_filter() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Lying Leg Curl (Machine)".into(),
+                weight: 100.0,
+                reps: 10,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let mut app = MyApp {
+            workouts: entries,
+            ..Default::default()
+        };
+        app.settings.exercise_type_filter = Some(ExerciseType::Isolation);
+        let filtered = app.filtered_entries();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].exercise, "Lying Leg Curl (Machine)");
     }
 
     #[test]
