@@ -34,6 +34,7 @@ pub enum YAxis {
 /// Result of generating a plot line with an optional marker for the maximum value.
 pub struct LineWithMarker {
     pub line: Line,
+    pub points: Vec<[f64; 2]>,
     pub max_point: Option<[f64; 2]>,
 }
 
@@ -60,8 +61,7 @@ pub fn weight_over_time_line(
         let mut max_point = None;
         for e in entries.iter().filter(|e| e.exercise == *exercise) {
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
-                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2)
-                {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                     let x = match x_axis {
                         XAxis::Date => d.num_days_from_ce() as f64,
                         XAxis::WorkoutIndex => idx as f64,
@@ -82,14 +82,16 @@ pub fn weight_over_time_line(
         }
         lines.push(LineWithMarker {
             line: Line::new(PlotPoints::from(points.clone())).name(exercise),
+            points: points.clone(),
             max_point,
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
                 let ma_points = moving_average_points(&points, w);
                 lines.push(LineWithMarker {
-                    line: Line::new(PlotPoints::from(ma_points))
+                    line: Line::new(PlotPoints::from(ma_points.clone()))
                         .name(format!("{exercise} MA")),
+                    points: ma_points,
                     max_point: None,
                 });
             }
@@ -122,13 +124,10 @@ pub fn estimated_1rm_line(
         let mut max_point = None;
         for e in entries.iter().filter(|e| e.exercise == *exercise) {
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
-                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2)
-                {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                     let f = unit.factor() as f64;
                     let est = match formula {
-                        OneRmFormula::Epley => {
-                            e.weight as f64 * f * (1.0 + e.reps as f64 / 30.0)
-                        }
+                        OneRmFormula::Epley => e.weight as f64 * f * (1.0 + e.reps as f64 / 30.0),
                         OneRmFormula::Brzycki => {
                             if e.reps >= 37 {
                                 continue;
@@ -151,14 +150,16 @@ pub fn estimated_1rm_line(
         }
         lines.push(LineWithMarker {
             line: Line::new(PlotPoints::from(points.clone())).name(exercise),
+            points: points.clone(),
             max_point,
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
                 let ma_points = moving_average_points(&points, w);
                 lines.push(LineWithMarker {
-                    line: Line::new(PlotPoints::from(ma_points))
+                    line: Line::new(PlotPoints::from(ma_points.clone()))
                         .name(format!("{exercise} MA")),
+                    points: ma_points,
                     max_point: None,
                 });
             }
@@ -367,12 +368,7 @@ mod tests {
     fn test_moving_average_points() {
         let points = vec![[0.0, 1.0], [1.0, 3.0], [2.0, 5.0], [3.0, 7.0]];
         let ma = moving_average_points(&points, 2);
-        let expected = vec![
-            [0.0, 1.0],
-            [1.0, 2.0],
-            [2.0, 4.0],
-            [3.0, 6.0],
-        ];
+        let expected = vec![[0.0, 1.0], [1.0, 2.0], [2.0, 4.0], [3.0, 6.0]];
         assert_eq!(ma, expected);
     }
 
