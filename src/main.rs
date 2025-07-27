@@ -42,6 +42,14 @@ impl WorkoutEntry {
     fn exercise_type(&self) -> Option<ExerciseType> {
         body_parts::info_for(&self.exercise).map(|i| i.kind)
     }
+
+    fn difficulty(&self) -> Option<body_parts::Difficulty> {
+        body_parts::difficulty_for(&self.exercise)
+    }
+
+    fn equipment(&self) -> Option<body_parts::Equipment> {
+        body_parts::equipment_for(&self.exercise)
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize, Default)]
@@ -165,6 +173,8 @@ struct Settings {
     superset_filter: Option<String>,
     body_part_filter: Option<String>,
     exercise_type_filter: Option<ExerciseType>,
+    difficulty_filter: Option<body_parts::Difficulty>,
+    equipment_filter: Option<body_parts::Equipment>,
     min_rpe: Option<f32>,
     max_rpe: Option<f32>,
     min_weight: Option<f32>,
@@ -246,6 +256,8 @@ impl Default for Settings {
             superset_filter: None,
             body_part_filter: None,
             exercise_type_filter: None,
+            difficulty_filter: None,
+            equipment_filter: None,
             min_rpe: None,
             max_rpe: None,
             min_weight: None,
@@ -570,6 +582,18 @@ impl MyApp {
         if let Some(kind) = self.settings.exercise_type_filter {
             match e.exercise_type() {
                 Some(k) if k == kind => {}
+                _ => return false,
+            }
+        }
+        if let Some(diff) = self.settings.difficulty_filter {
+            match e.difficulty() {
+                Some(d) if d == diff => {}
+                _ => return false,
+            }
+        }
+        if let Some(eq) = self.settings.equipment_filter {
+            match e.equipment() {
+                Some(d) if d == eq => {}
                 _ => return false,
             }
         }
@@ -2069,6 +2093,68 @@ impl App for MyApp {
                                                 self.settings_dirty = true;
                                             }
                                         });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Difficulty:");
+                                            let prev = self.settings.difficulty_filter;
+                                            egui::ComboBox::from_id_source(
+                                                "difficulty_filter_combo",
+                                            )
+                                            .selected_text(match prev {
+                                                Some(d) => format!("{:?}", d),
+                                                None => "Any".into(),
+                                            })
+                                            .show_ui(
+                                                ui,
+                                                |ui| {
+                                                    ui.selectable_value(
+                                                        &mut self.settings.difficulty_filter,
+                                                        None::<body_parts::Difficulty>,
+                                                        "Any",
+                                                    );
+                                                    for d in body_parts::ALL_DIFFICULTIES {
+                                                        ui.selectable_value(
+                                                            &mut self.settings.difficulty_filter,
+                                                            Some(d),
+                                                            format!("{:?}", d),
+                                                        );
+                                                    }
+                                                },
+                                            );
+                                            if prev != self.settings.difficulty_filter {
+                                                self.settings_dirty = true;
+                                            }
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Equipment:");
+                                            let prev = self.settings.equipment_filter;
+                                            egui::ComboBox::from_id_source(
+                                                "equipment_filter_combo",
+                                            )
+                                            .selected_text(match prev {
+                                                Some(e) => format!("{:?}", e),
+                                                None => "Any".into(),
+                                            })
+                                            .show_ui(
+                                                ui,
+                                                |ui| {
+                                                    ui.selectable_value(
+                                                        &mut self.settings.equipment_filter,
+                                                        None::<body_parts::Equipment>,
+                                                        "Any",
+                                                    );
+                                                    for e in body_parts::ALL_EQUIPMENT {
+                                                        ui.selectable_value(
+                                                            &mut self.settings.equipment_filter,
+                                                            Some(e),
+                                                            format!("{:?}", e),
+                                                        );
+                                                    }
+                                                },
+                                            );
+                                            if prev != self.settings.equipment_filter {
+                                                self.settings_dirty = true;
+                                            }
+                                        });
                                         ui.end_row();
 
                                         ui.horizontal(|ui| {
@@ -2360,6 +2446,62 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             ..Default::default()
         };
         app.settings.exercise_type_filter = Some(ExerciseType::Isolation);
+        let filtered = app.filtered_entries();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].exercise, "Lying Leg Curl (Machine)");
+    }
+
+    #[test]
+    fn difficulty_filter() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Push-Up".into(),
+                weight: 0.0,
+                reps: 15,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let mut app = MyApp {
+            workouts: entries,
+            ..Default::default()
+        };
+        app.settings.difficulty_filter = Some(body_parts::Difficulty::Beginner);
+        let filtered = app.filtered_entries();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].exercise, "Push-Up");
+    }
+
+    #[test]
+    fn equipment_filter() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Lying Leg Curl (Machine)".into(),
+                weight: 100.0,
+                reps: 10,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let mut app = MyApp {
+            workouts: entries,
+            ..Default::default()
+        };
+        app.settings.equipment_filter = Some(body_parts::Equipment::Machine);
         let filtered = app.filtered_entries();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].exercise, "Lying Leg Curl (Machine)");
