@@ -143,6 +143,8 @@ struct Settings {
     show_body_part_volume: bool,
     #[serde(default)]
     show_exercise_volume: bool,
+    #[serde(default)]
+    show_exercise_stats: bool,
     highlight_max: bool,
     show_smoothed: bool,
     ma_window: usize,
@@ -224,6 +226,7 @@ impl Default for Settings {
             show_volume: false,
             show_body_part_volume: false,
             show_exercise_volume: false,
+            show_exercise_stats: false,
             highlight_max: true,
             show_smoothed: false,
             smoothing_method: SmoothingMethod::SimpleMA,
@@ -293,6 +296,7 @@ struct MyApp {
     show_settings: bool,
     show_entries: bool,
     show_plot_window: bool,
+    show_exercise_stats: bool,
     show_about: bool,
     sort_column: SortColumn,
     sort_ascending: bool,
@@ -306,6 +310,8 @@ struct MyApp {
 
 impl Default for MyApp {
     fn default() -> Self {
+        let settings = Settings::load();
+        let show_exercise_stats = settings.show_exercise_stats;
         let mut app = Self {
             workouts: Vec::new(),
             stats: BasicStats::default(),
@@ -314,10 +320,11 @@ impl Default for MyApp {
             table_filter: String::new(),
             last_loaded: None,
             toast_start: None,
-            settings: Settings::load(),
+            settings,
             show_settings: false,
             show_entries: false,
             show_plot_window: false,
+            show_exercise_stats,
             show_about: false,
             sort_column: SortColumn::Date,
             sort_ascending: true,
@@ -569,6 +576,35 @@ impl MyApp {
             .iter()
             .filter(|e| self.entry_matches_filters(e))
             .collect()
+    }
+
+    fn exercise_set_counts(&self, exercise: &str) -> (usize, usize, usize) {
+        use std::collections::HashSet;
+        let mut workouts = HashSet::new();
+        let mut working = 0usize;
+        let mut warmups = 0usize;
+        for e in self.filtered_entry_refs() {
+            if e.exercise.eq_ignore_ascii_case(exercise) {
+                let id = format!(
+                    "{}{}",
+                    e.raw.title.as_deref().unwrap_or(""),
+                    e.raw.start_time
+                );
+                workouts.insert(id);
+                if e
+                    .raw
+                    .set_type
+                    .as_deref()
+                    .map(|s| s.eq_ignore_ascii_case("warmup"))
+                    == Some(true)
+                {
+                    warmups += 1;
+                } else {
+                    working += 1;
+                }
+            }
+        }
+        (workouts.len(), working, warmups)
     }
 
     fn draw_plot(
@@ -974,6 +1010,7 @@ impl MyApp {
         self.settings.sort_ascending = self.sort_ascending;
         self.settings.summary_sort = self.summary_sort;
         self.settings.summary_sort_ascending = self.summary_sort_ascending;
+        self.settings.show_exercise_stats = self.show_exercise_stats;
     }
 }
 
@@ -1018,6 +1055,12 @@ impl App for MyApp {
                     }
                     if ui.button("Raw Entries").clicked() {
                         self.show_entries = true;
+                        ui.close_menu();
+                    }
+                    if ui.button("Exercise Stats").clicked() {
+                        self.show_exercise_stats = !self.show_exercise_stats;
+                        self.settings.show_exercise_stats = self.show_exercise_stats;
+                        self.settings_dirty = true;
                         ui.close_menu();
                     }
                     if ui.button("Usage Tips").clicked() {
@@ -1327,6 +1370,11 @@ impl App for MyApp {
                     if ui.button("Plot Window").clicked() {
                         self.show_plot_window = !self.show_plot_window;
                     }
+                    if ui.button("Exercise Stats").clicked() {
+                        self.show_exercise_stats = !self.show_exercise_stats;
+                        self.settings.show_exercise_stats = self.show_exercise_stats;
+                        self.settings_dirty = true;
+                    }
                 }
             }
 
@@ -1467,6 +1515,22 @@ impl App for MyApp {
                     });
                 self.show_plot_window = open;
             }
+        }
+
+        if self.show_exercise_stats {
+            let mut open = self.show_exercise_stats;
+            egui::Window::new("Exercise Stats")
+                .open(&mut open)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    for ex in &self.selected_exercises {
+                        let (w, working, warmup) = self.exercise_set_counts(ex);
+                        ui.label(format!(
+                            "{ex}: {w} workouts, {working} working sets, {warmup} warm-up sets"
+                        ));
+                    }
+                });
+            self.show_exercise_stats = open;
         }
 
         if self.show_about {
@@ -2063,6 +2127,7 @@ mod tests {
         s.exclude_warmups = true;
         s.show_body_part_volume = true;
         s.show_exercise_volume = true;
+        s.show_exercise_stats = true;
         s.body_part_volume_aggregation = VolumeAggregation::Monthly;
         s.auto_load_last = false;
         s.last_file = Some("/tmp/test.csv".into());
@@ -2232,6 +2297,56 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].weight, 200.0);
         assert_eq!(filtered[0].reps, 10);
+    }
+
+    #[test]
+    fn exercise_set_counts() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 45.0,
+                reps: 10,
+                raw: RawWorkoutRow {
+                    set_type: Some("warmup".into()),
+                    title: Some("W1".into()),
+                    start_time: "1".into(),
+                    ..RawWorkoutRow::default()
+                },
+            },
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow {
+                    set_type: Some("working".into()),
+                    title: Some("W1".into()),
+                    start_time: "1".into(),
+                    ..RawWorkoutRow::default()
+                },
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Bench".into(),
+                weight: 105.0,
+                reps: 5,
+                raw: RawWorkoutRow {
+                    set_type: Some("working".into()),
+                    title: Some("W2".into()),
+                    start_time: "2".into(),
+                    ..RawWorkoutRow::default()
+                },
+            },
+        ];
+        let app = MyApp {
+            workouts: entries,
+            ..Default::default()
+        };
+        let (w, working, warmup) = app.exercise_set_counts("Bench");
+        assert_eq!(w, 2);
+        assert_eq!(working, 2);
+        assert_eq!(warmup, 1);
     }
 
     #[test]
