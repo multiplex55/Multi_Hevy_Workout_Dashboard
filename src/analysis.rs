@@ -2,7 +2,7 @@
 use crate::WorkoutEntry;
 use crate::body_parts::body_part_for;
 use crate::plotting::OneRmFormula;
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Datelike};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -24,6 +24,10 @@ pub struct ExerciseStats {
     pub total_volume: f32,
     pub best_est_1rm: Option<f32>,
     pub max_weight: Option<f32>,
+    /// Slope of the average set weight over time.
+    pub weight_trend: Option<f32>,
+    /// Slope of the training volume over time.
+    pub volume_trend: Option<f32>,
 }
 
 /// Aggregate per-exercise statistics from a slice of workout entries.
@@ -38,6 +42,7 @@ pub fn aggregate_exercise_stats(
     end: Option<NaiveDate>,
 ) -> HashMap<String, ExerciseStats> {
     let mut map: HashMap<String, ExerciseStats> = HashMap::new();
+    let mut trend_data: HashMap<String, Vec<(f32, f32, f32)>> = HashMap::new();
 
     for e in entries {
         if let Some(d) = parse_date(&e.date) {
@@ -67,7 +72,26 @@ pub fn aggregate_exercise_stats(
                     Some(current) if current >= est => Some(current),
                     _ => Some(est),
                 };
+
+                let t = d.num_days_from_ce() as f32;
+                trend_data
+                    .entry(e.exercise.clone())
+                    .or_default()
+                    .push((t, e.weight, e.weight * e.reps as f32));
             }
+        }
+    }
+
+    for (ex, data) in trend_data {
+        let mut weight_pts = Vec::new();
+        let mut volume_pts = Vec::new();
+        for (t, w, v) in data {
+            weight_pts.push((t, w));
+            volume_pts.push((t, v));
+        }
+        if let Some(stats) = map.get_mut(&ex) {
+            stats.weight_trend = Some(slope(&weight_pts));
+            stats.volume_trend = Some(slope(&volume_pts));
         }
     }
 
@@ -97,6 +121,22 @@ pub fn aggregate_sets_by_body_part(
 
 fn parse_date(date: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()
+}
+
+fn slope(points: &[(f32, f32)]) -> f32 {
+    if points.len() < 2 {
+        return 0.0;
+    }
+    let n = points.len() as f32;
+    let mean_x: f32 = points.iter().map(|(x, _)| *x).sum::<f32>() / n;
+    let mean_y: f32 = points.iter().map(|(_, y)| *y).sum::<f32>() / n;
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for (x, y) in points {
+        num += (*x - mean_x) * (*y - mean_y);
+        den += (*x - mean_x) * (*x - mean_x);
+    }
+    if den == 0.0 { 0.0 } else { num / den }
 }
 
 /// Format a user facing message after successfully loading a CSV file.
@@ -294,6 +334,8 @@ mod tests {
         assert!((squat.total_volume - 1025.0).abs() < 1e-6);
         assert!((squat.best_est_1rm.unwrap() - 122.5).abs() < 1e-3);
         assert!((squat.max_weight.unwrap() - 105.0).abs() < 1e-6);
+        assert!(squat.weight_trend.unwrap() > 0.0);
+        assert!(squat.volume_trend.unwrap() > 0.0);
 
         let bench = map.get("Bench").unwrap();
         assert_eq!(bench.total_sets, 1);
@@ -301,12 +343,16 @@ mod tests {
         assert!((bench.total_volume - 400.0).abs() < 1e-6);
         assert!((bench.best_est_1rm.unwrap() - 93.3333).abs() < 1e-3);
         assert!((bench.max_weight.unwrap() - 80.0).abs() < 1e-6);
+        assert_eq!(bench.weight_trend.unwrap(), 0.0);
+        assert_eq!(bench.volume_trend.unwrap(), 0.0);
 
         let deadlift = map.get("Deadlift").unwrap();
         assert_eq!(deadlift.total_sets, 1);
         assert_eq!(deadlift.total_reps, 5);
         assert!((deadlift.total_volume - 600.0).abs() < 1e-6);
         assert!((deadlift.max_weight.unwrap() - 120.0).abs() < 1e-6);
+        assert_eq!(deadlift.weight_trend.unwrap(), 0.0);
+        assert_eq!(deadlift.volume_trend.unwrap(), 0.0);
     }
 
     #[test]

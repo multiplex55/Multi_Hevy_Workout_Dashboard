@@ -476,6 +476,14 @@ impl MyApp {
         });
     }
 
+    fn trend_symbol(trend: Option<f32>) -> &'static str {
+        match trend {
+            Some(t) if t > 0.0 => "\u{25B2}",
+            Some(t) if t < 0.0 => "\u{25BC}",
+            _ => "\u{2013}",
+        }
+    }
+
     fn entry_matches_filters(&self, e: &WorkoutEntry) -> bool {
         if self.settings.exclude_warmups {
             if e.raw
@@ -1218,6 +1226,8 @@ impl App for MyApp {
                                     &mut summary_sort,
                                     &mut summary_sort_ascending,
                                 );
+                                ui.label("Weight Trend");
+                                ui.label("Volume Trend");
                                 ui.end_row();
                                 MyApp::sort_summary_stats(
                                     &mut stats,
@@ -1240,6 +1250,8 @@ impl App for MyApp {
                                     } else {
                                         ui.label("-");
                                     }
+                                    ui.label(MyApp::trend_symbol(s.weight_trend));
+                                    ui.label(MyApp::trend_symbol(s.volume_trend));
                                     ui.end_row();
                                 }
                             });
@@ -2360,6 +2372,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
                     total_volume: 200.0,
                     best_est_1rm: Some(150.0),
                     max_weight: Some(120.0),
+                    ..Default::default()
                 },
             ),
             (
@@ -2370,6 +2383,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
                     total_volume: 300.0,
                     best_est_1rm: Some(250.0),
                     max_weight: Some(200.0),
+                    ..Default::default()
                 },
             ),
             (
@@ -2380,6 +2394,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
                     total_volume: 400.0,
                     best_est_1rm: Some(350.0),
                     max_weight: Some(300.0),
+                    ..Default::default()
                 },
             ),
         ];
