@@ -361,19 +361,6 @@ impl Default for MyApp {
                                 app.settings.start_date,
                                 app.settings.end_date,
                             );
-                            if app.selected_exercises.is_empty() {
-                                let filtered = app.filtered_entries();
-                                if let Some(first) = unique_exercises(
-                                    &filtered,
-                                    app.settings.start_date,
-                                    app.settings.end_date,
-                                )
-                                .into_iter()
-                                .next()
-                                {
-                                    app.selected_exercises.push(first);
-                                }
-                            }
                             app.last_loaded =
                                 p.file_name().map(|f| f.to_string_lossy().to_string());
                             app.toast_start = Some(Instant::now());
@@ -605,8 +592,7 @@ impl MyApp {
                     e.raw.start_time
                 );
                 workouts.insert(id);
-                if e
-                    .raw
+                if e.raw
                     .set_type
                     .as_deref()
                     .map(|s| s.eq_ignore_ascii_case("warmup"))
@@ -1198,77 +1184,77 @@ impl App for MyApp {
                             egui::Grid::new("exercise_summary_grid")
                                 .striped(true)
                                 .show(ui, |ui| {
-                                MyApp::summary_sort_button(
-                                    ui,
-                                    "Exercise",
-                                    SummarySort::Exercise,
-                                    &mut summary_sort,
-                                    &mut summary_sort_ascending,
-                                );
-                                MyApp::summary_sort_button(
-                                    ui,
-                                    "Sets",
-                                    SummarySort::Sets,
-                                    &mut summary_sort,
-                                    &mut summary_sort_ascending,
-                                );
-                                MyApp::summary_sort_button(
-                                    ui,
-                                    "Reps",
-                                    SummarySort::Reps,
-                                    &mut summary_sort,
-                                    &mut summary_sort_ascending,
-                                );
-                                MyApp::summary_sort_button(
-                                    ui,
-                                    "Volume",
-                                    SummarySort::Volume,
-                                    &mut summary_sort,
-                                    &mut summary_sort_ascending,
-                                );
-                                MyApp::summary_sort_button(
-                                    ui,
-                                    "Max Weight",
-                                    SummarySort::MaxWeight,
-                                    &mut summary_sort,
-                                    &mut summary_sort_ascending,
-                                );
-                                MyApp::summary_sort_button(
-                                    ui,
-                                    "Best 1RM",
-                                    SummarySort::Best1Rm,
-                                    &mut summary_sort,
-                                    &mut summary_sort_ascending,
-                                );
-                                ui.label("Weight Trend");
-                                ui.label("Volume Trend");
-                                ui.end_row();
-                                MyApp::sort_summary_stats(
-                                    &mut stats,
-                                    summary_sort,
-                                    summary_sort_ascending,
-                                );
-                                for (ex, s) in stats {
-                                    ui.label(ex);
-                                    ui.label(s.total_sets.to_string());
-                                    ui.label(s.total_reps.to_string());
-                                    let f = self.settings.weight_unit.factor();
-                                    ui.label(format!("{:.1}", s.total_volume * f));
-                                    if let Some(w) = s.max_weight {
-                                        ui.label(format!("{:.1}", w * f));
-                                    } else {
-                                        ui.label("-");
-                                    }
-                                    if let Some(b) = s.best_est_1rm {
-                                        ui.label(format!("{:.1}", b * f));
-                                    } else {
-                                        ui.label("-");
-                                    }
-                                    ui.label(MyApp::trend_symbol(s.weight_trend));
-                                    ui.label(MyApp::trend_symbol(s.volume_trend));
+                                    MyApp::summary_sort_button(
+                                        ui,
+                                        "Exercise",
+                                        SummarySort::Exercise,
+                                        &mut summary_sort,
+                                        &mut summary_sort_ascending,
+                                    );
+                                    MyApp::summary_sort_button(
+                                        ui,
+                                        "Sets",
+                                        SummarySort::Sets,
+                                        &mut summary_sort,
+                                        &mut summary_sort_ascending,
+                                    );
+                                    MyApp::summary_sort_button(
+                                        ui,
+                                        "Reps",
+                                        SummarySort::Reps,
+                                        &mut summary_sort,
+                                        &mut summary_sort_ascending,
+                                    );
+                                    MyApp::summary_sort_button(
+                                        ui,
+                                        "Volume",
+                                        SummarySort::Volume,
+                                        &mut summary_sort,
+                                        &mut summary_sort_ascending,
+                                    );
+                                    MyApp::summary_sort_button(
+                                        ui,
+                                        "Max Weight",
+                                        SummarySort::MaxWeight,
+                                        &mut summary_sort,
+                                        &mut summary_sort_ascending,
+                                    );
+                                    MyApp::summary_sort_button(
+                                        ui,
+                                        "Best 1RM",
+                                        SummarySort::Best1Rm,
+                                        &mut summary_sort,
+                                        &mut summary_sort_ascending,
+                                    );
+                                    ui.label("Weight Trend");
+                                    ui.label("Volume Trend");
                                     ui.end_row();
-                                }
-                            });
+                                    MyApp::sort_summary_stats(
+                                        &mut stats,
+                                        summary_sort,
+                                        summary_sort_ascending,
+                                    );
+                                    for (ex, s) in stats {
+                                        ui.label(ex);
+                                        ui.label(s.total_sets.to_string());
+                                        ui.label(s.total_reps.to_string());
+                                        let f = self.settings.weight_unit.factor();
+                                        ui.label(format!("{:.1}", s.total_volume * f));
+                                        if let Some(w) = s.max_weight {
+                                            ui.label(format!("{:.1}", w * f));
+                                        } else {
+                                            ui.label("-");
+                                        }
+                                        if let Some(b) = s.best_est_1rm {
+                                            ui.label(format!("{:.1}", b * f));
+                                        } else {
+                                            ui.label("-");
+                                        }
+                                        ui.label(MyApp::trend_symbol(s.weight_trend));
+                                        ui.label(MyApp::trend_symbol(s.volume_trend));
+                                        ui.end_row();
+                                    }
+                                });
                         });
                         self.summary_sort = summary_sort;
                         self.summary_sort_ascending = summary_sort_ascending;
@@ -1296,19 +1282,6 @@ impl App for MyApp {
                             self.settings.start_date,
                             self.settings.end_date,
                         );
-                        if self.selected_exercises.is_empty() {
-                            let filtered = self.filtered_entries();
-                            if let Some(first) = unique_exercises(
-                                &filtered,
-                                self.settings.start_date,
-                                self.settings.end_date,
-                            )
-                            .into_iter()
-                            .next()
-                            {
-                                self.selected_exercises.push(first);
-                            }
-                        }
                         self.last_loaded = Some(filename);
                         self.toast_start = Some(Instant::now());
                         self.settings.last_file = Some(path.display().to_string());
@@ -1354,11 +1327,6 @@ impl App for MyApp {
                     let q = self.search_query.to_lowercase();
                     exercises.retain(|e| e.to_lowercase().contains(&q));
                 }
-                if self.selected_exercises.is_empty() {
-                    if let Some(first) = exercises.first().cloned() {
-                        self.selected_exercises.push(first);
-                    }
-                }
                 ui.horizontal(|ui| {
                     ui.label("Filter:");
                     ui.text_edit_singleline(&mut self.search_query);
@@ -1387,7 +1355,9 @@ impl App for MyApp {
                         });
                 });
 
-                if !self.selected_exercises.is_empty() {
+                if self.selected_exercises.is_empty() {
+                    ui.label("No exercises selected");
+                } else {
                     let sel: Vec<String> = self.selected_exercises.clone();
                     let plot_resp = self.draw_plot(ctx, ui, &filtered, &sel);
                     if ui.button("Save Plot").clicked() {
@@ -1532,21 +1502,23 @@ impl App for MyApp {
 
         if self.show_plot_window {
             let filtered = self.filtered_entries();
-            if !self.selected_exercises.is_empty() {
-                let sel: Vec<String> = self.selected_exercises.clone();
-                let mut open = self.show_plot_window;
-                egui::Window::new("Plot Window")
-                    .open(&mut open)
-                    .vscroll(true)
-                    .show(ctx, |ui| {
+            let mut open = self.show_plot_window;
+            egui::Window::new("Plot Window")
+                .open(&mut open)
+                .vscroll(true)
+                .show(ctx, |ui| {
+                    if self.selected_exercises.is_empty() {
+                        ui.label("No exercises selected");
+                    } else {
+                        let sel: Vec<String> = self.selected_exercises.clone();
                         let plot_resp = self.draw_plot(ctx, ui, &filtered, &sel);
                         if ui.button("Save Plot").clicked() {
                             self.capture_rect = Some(plot_resp.response.rect);
                             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
                         }
-                    });
-                self.show_plot_window = open;
-            }
+                    }
+                });
+            self.show_plot_window = open;
         }
 
         if self.show_exercise_stats {
