@@ -1,7 +1,7 @@
 use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui_extras::DatePickerButton;
-use egui_plot::{Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points, Legend};
+use egui_plot::{Legend, Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -1403,6 +1403,9 @@ impl App for MyApp {
                 if let Some(ref ex) = self.stats.most_common_exercise {
                     ui.label(format!("Most common exercise: {}", ex));
                 }
+                if ui.button("Open Table").clicked() {
+                    self.show_entries = true;
+                }
                 ui.separator();
 
                 let filtered = self.filtered_entries();
@@ -1510,9 +1513,6 @@ impl App for MyApp {
             }
 
             ui.heading("Workout Entries");
-            if ui.button("Open Table").clicked() {
-                self.show_entries = true;
-            }
         });
 
         if self.show_entries {
