@@ -42,6 +42,7 @@ the workout date, exercise name, weight and reps.
 ## Features
 
 * **File Selection** – Click **Load CSV** to choose a Hevy export file. The app parses the file and stores the workout entries.
+* **Drag & Drop** – You can also drop a `.csv` file onto the window to load it directly.
 * **Stat Calculations** – After loading, the program computes totals such as average sets per workout, average reps per set, days between sessions and most frequent exercise.
 * **Plots** – For the selected exercise you can view:
   * Weight over time

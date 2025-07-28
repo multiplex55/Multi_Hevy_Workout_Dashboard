@@ -5,6 +5,7 @@ use egui_plot::{Legend, Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoi
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
+use std::io::Cursor;
 use std::time::{Duration, Instant};
 
 use chrono::{Local, NaiveDate};
@@ -1147,6 +1148,63 @@ impl App for MyApp {
                         log::error!("Failed to save plot: {err}");
                     }
                 }
+            }
+        }
+
+        // Handle CSV drag-and-drop
+        for file in ctx.input(|i| i.raw.dropped_files.clone()) {
+            let ext_ok = file
+                .path
+                .as_ref()
+                .and_then(|p| p.extension())
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("csv"))
+                .unwrap_or_else(|| file.name.to_lowercase().ends_with(".csv"));
+            if !ext_ok {
+                continue;
+            }
+
+            if let Some(path) = file.path.clone() {
+                if let Ok(f) = File::open(&path) {
+                    if let Ok(entries) = parse_workout_csv(f) {
+                        self.workouts = entries;
+                    } else {
+                        self.workouts.clear();
+                    }
+                    let filename = path
+                        .file_name()
+                        .map(|f| f.to_string_lossy().to_string())
+                        .unwrap_or_else(|| path.display().to_string());
+                    info!("Loaded {} entries from {}", self.workouts.len(), filename);
+                    self.stats = compute_stats(
+                        &self.workouts,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    );
+                    self.update_filter_values();
+                    self.last_loaded = Some(filename);
+                    self.toast_start = Some(Instant::now());
+                    self.settings.last_file = Some(path.display().to_string());
+                    self.settings_dirty = true;
+                }
+            } else if let Some(bytes) = file.bytes {
+                let name = file.name.clone();
+                let reader = Cursor::new(bytes.to_vec());
+                if let Ok(entries) = parse_workout_csv(reader) {
+                    self.workouts = entries;
+                } else {
+                    self.workouts.clear();
+                }
+                info!("Loaded {} entries from {}", self.workouts.len(), name);
+                self.stats = compute_stats(
+                    &self.workouts,
+                    self.settings.start_date,
+                    self.settings.end_date,
+                );
+                self.update_filter_values();
+                self.last_loaded = Some(name);
+                self.toast_start = Some(Instant::now());
+                self.settings_dirty = true;
             }
         }
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
