@@ -323,6 +323,7 @@ struct MyApp {
     show_settings: bool,
     show_entries: bool,
     show_plot_window: bool,
+    show_compare_window: bool,
     show_exercise_stats: bool,
     show_personal_records: bool,
     show_exercise_panel: bool,
@@ -357,6 +358,7 @@ impl Default for MyApp {
             show_settings: false,
             show_entries: false,
             show_plot_window: false,
+            show_compare_window: false,
             show_exercise_stats,
             show_personal_records,
             show_exercise_panel,
@@ -1596,6 +1598,9 @@ impl App for MyApp {
                     if ui.button("Plot Window").clicked() {
                         self.show_plot_window = !self.show_plot_window;
                     }
+                    if ui.button("Compare Window").clicked() {
+                        self.show_compare_window = !self.show_compare_window;
+                    }
                     if ui.button("Exercise Stats").clicked() {
                         self.show_exercise_stats = !self.show_exercise_stats;
                         self.settings.show_exercise_stats = self.show_exercise_stats;
@@ -1745,6 +1750,27 @@ impl App for MyApp {
                     }
                 });
             self.show_plot_window = open;
+        }
+
+        if self.show_compare_window {
+            let filtered = self.filtered_entries();
+            let mut open = self.show_compare_window;
+            egui::Window::new("Exercise Comparison")
+                .open(&mut open)
+                .vscroll(true)
+                .show(ctx, |ui| {
+                    if self.selected_exercises.is_empty() {
+                        ui.label("No exercises selected");
+                    } else {
+                        let sel = self.selected_exercises.clone();
+                        ui.columns(sel.len(), |cols| {
+                            for (col, ex) in cols.iter_mut().zip(sel.iter()) {
+                                self.draw_plot(ctx, col, &filtered, &[ex.clone()]);
+                            }
+                        });
+                    }
+                });
+            self.show_compare_window = open;
         }
 
         if self.show_exercise_stats {
