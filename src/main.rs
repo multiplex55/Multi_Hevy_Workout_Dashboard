@@ -144,6 +144,14 @@ fn check_for_new_pr(repo: &str, last: Option<u64>) -> Option<u64> {
     None
 }
 
+fn default_plot_width() -> f32 {
+    400.0
+}
+
+fn default_plot_height() -> f32 {
+    200.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct Settings {
     show_weight: bool,
@@ -167,6 +175,10 @@ struct Settings {
     show_smoothed: bool,
     ma_window: usize,
     smoothing_method: SmoothingMethod,
+    #[serde(default = "default_plot_width")]
+    plot_width: f32,
+    #[serde(default = "default_plot_height")]
+    plot_height: f32,
     #[serde(default)]
     volume_aggregation: VolumeAggregation,
     #[serde(default)]
@@ -255,6 +267,8 @@ impl Default for Settings {
             show_smoothed: false,
             smoothing_method: SmoothingMethod::SimpleMA,
             ma_window: 5,
+            plot_width: 400.0,
+            plot_height: 200.0,
             volume_aggregation: VolumeAggregation::Weekly,
             body_part_volume_aggregation: VolumeAggregation::Weekly,
             weight_unit: WeightUnit::Lbs,
@@ -338,6 +352,7 @@ struct MyApp {
     show_mapping: bool,
     mapping_exercise: String,
     mapping_dirty: bool,
+    mapping_entry: exercise_mapping::MuscleMapping,
     pr_toast_start: Option<Instant>,
     pr_message: Option<String>,
 }
@@ -377,6 +392,7 @@ impl Default for MyApp {
             show_mapping: false,
             mapping_exercise: String::new(),
             mapping_dirty: false,
+            mapping_entry: exercise_mapping::MuscleMapping::default(),
             pr_toast_start: None,
             pr_message: None,
         };
@@ -704,6 +720,8 @@ impl MyApp {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
                     let resp = Plot::new("weight_plot")
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -809,7 +827,8 @@ impl MyApp {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
                     let resp = Plot::new("est_1rm_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -913,7 +932,8 @@ impl MyApp {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
                     let resp = Plot::new("volume_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1019,7 +1039,8 @@ impl MyApp {
 
                 if self.settings.show_exercise_volume && sel.len() == 1 {
                     let resp = Plot::new("exercise_volume_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1055,7 +1076,8 @@ impl MyApp {
 
                 if self.settings.show_body_part_volume {
                     let resp = Plot::new("body_part_volume_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1095,7 +1117,8 @@ impl MyApp {
                         None
                     };
                     let resp = Plot::new("sets_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
@@ -1112,7 +1135,12 @@ impl MyApp {
             });
         });
 
-        first_resp.unwrap_or_else(|| Plot::new("empty_plot").show(ui, |_ui| {}))
+        first_resp.unwrap_or_else(|| {
+            Plot::new("empty_plot")
+                .width(self.settings.plot_width)
+                .height(self.settings.plot_height)
+                .show(ui, |_ui| {})
+        })
     }
 
     fn sync_settings_from_app(&mut self) {
@@ -1356,7 +1384,11 @@ impl App for MyApp {
                     ui.text_edit_singleline(&mut self.search_query);
 
                     let filtered = self.filtered_entries();
-                    let mut exercises = unique_exercises(&filtered, self.settings.start_date, self.settings.end_date);
+                    let mut exercises = unique_exercises(
+                        &filtered,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    );
                     if !self.search_query.is_empty() {
                         let q = self.search_query.to_lowercase();
                         exercises.retain(|e| e.to_lowercase().contains(&q));
@@ -1365,7 +1397,7 @@ impl App for MyApp {
                     ui.label("Exercises:");
                     let resp = ui.menu_button(
                         if self.selected_exercises.is_empty() {
-                            String::new()
+                            "Select Exercises".to_string()
                         } else {
                             self.selected_exercises.join(", ")
                         },
@@ -1916,56 +1948,71 @@ impl App for MyApp {
         if self.show_mapping {
             let mut open = self.show_mapping;
             egui::Window::new("Muscle Mapping")
+                .default_width(400.0)
+                .default_height(300.0)
                 .open(&mut open)
                 .resizable(true)
                 .show(ctx, |ui| {
-                    let mut selected = self.mapping_exercise.clone();
                     let list = unique_exercises(&self.workouts, None, None);
+                    let mut selected = self.mapping_exercise.clone();
                     egui::ComboBox::from_id_source("map_exercise_combo")
-                        .selected_text(if selected.is_empty() { "Select".into() } else { selected.clone() })
+                        .selected_text(if selected.is_empty() {
+                            "Select".into()
+                        } else {
+                            selected.clone()
+                        })
                         .show_ui(ui, |ui| {
                             for e in &list {
                                 ui.selectable_value(&mut selected, e.clone(), e);
                             }
                         });
-                    self.mapping_exercise = selected.clone();
-                    if !selected.is_empty() {
-                        let mut map = exercise_mapping::get(&selected).unwrap_or_default();
+                    if selected != self.mapping_exercise {
+                        self.mapping_exercise = selected.clone();
+                        self.mapping_entry = exercise_mapping::get(&selected).unwrap_or_default();
+                    }
+                    if !self.mapping_exercise.is_empty() {
                         let muscles = body_parts::primary_muscle_groups();
-                        let mut primary = map.primary.clone();
                         egui::ComboBox::from_id_source("map_primary")
-                            .selected_text(if primary.is_empty() { "Select" } else { &primary })
+                            .selected_text(if self.mapping_entry.primary.is_empty() {
+                                "Select"
+                            } else {
+                                &self.mapping_entry.primary
+                            })
                             .show_ui(ui, |ui| {
                                 for m in &muscles {
-                                    ui.selectable_value(&mut primary, m.clone(), m);
+                                    ui.selectable_value(
+                                        &mut self.mapping_entry.primary,
+                                        m.clone(),
+                                        m,
+                                    );
                                 }
                             });
                         ui.label("Secondary:");
-                        let mut secondary = map.secondary.clone();
                         for m in &muscles {
-                            let mut sel = secondary.contains(m);
+                            let mut sel = self.mapping_entry.secondary.contains(m);
                             if ui.checkbox(&mut sel, m).changed() {
                                 if sel {
-                                    if !secondary.contains(m) { secondary.push(m.clone()); }
+                                    if !self.mapping_entry.secondary.contains(m) {
+                                        self.mapping_entry.secondary.push(m.clone());
+                                    }
                                 } else {
-                                    secondary.retain(|s| s != m);
+                                    self.mapping_entry.secondary.retain(|s| s != m);
                                 }
                             }
                         }
-                        let mut category = map.category.clone();
                         ui.horizontal(|ui| {
                             ui.label("Category:");
-                            ui.text_edit_singleline(&mut category);
+                            ui.text_edit_singleline(&mut self.mapping_entry.category);
                         });
                         if ui.button("Save Mapping").clicked() {
                             exercise_mapping::set(
-                                selected.clone(),
-                                exercise_mapping::MuscleMapping { primary, secondary, category },
+                                self.mapping_exercise.clone(),
+                                self.mapping_entry.clone(),
                             );
                             self.mapping_dirty = true;
                         }
                         if ui.button("Remove Mapping").clicked() {
-                            exercise_mapping::remove(&selected);
+                            exercise_mapping::remove(&self.mapping_exercise);
                             self.mapping_dirty = true;
                         }
                     }
@@ -2111,6 +2158,26 @@ impl App for MyApp {
                                             });
                                         if prev != self.settings.smoothing_method {
                                             self.settings_dirty = true;
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Plot width:");
+                                        let mut w = format!("{:.0}", self.settings.plot_width);
+                                        if ui.text_edit_singleline(&mut w).changed() {
+                                            if let Ok(v) = w.parse::<f32>() {
+                                                self.settings.plot_width = v.max(50.0);
+                                                self.settings_dirty = true;
+                                            }
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Plot height:");
+                                        let mut h = format!("{:.0}", self.settings.plot_height);
+                                        if ui.text_edit_singleline(&mut h).changed() {
+                                            if let Ok(v) = h.parse::<f32>() {
+                                                self.settings.plot_height = v.max(50.0);
+                                                self.settings_dirty = true;
+                                            }
                                         }
                                     });
                                     ui.end_row();
@@ -2456,7 +2523,7 @@ impl App for MyApp {
                                                         ui.selectable_value(
                                                             &mut self.settings.body_part_filter,
                                                             Some(p.clone()),
-                                                            &p
+                                                            &p,
                                                         );
                                                     }
                                                 },

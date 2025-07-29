@@ -12,9 +12,8 @@ pub struct MuscleMapping {
     pub category: String,
 }
 
-static MAPPINGS: Lazy<Mutex<HashMap<String, MuscleMapping>>> = Lazy::new(|| {
-    Mutex::new(HashMap::new())
-});
+static MAPPINGS: Lazy<Mutex<HashMap<String, MuscleMapping>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 const FILE: &str = "exercise_mapping.json";
 
