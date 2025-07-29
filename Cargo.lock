@@ -16,6 +16,7 @@ dependencies = [
  "env_logger",
  "image",
  "log",
+ "once_cell",
  "phf",
  "rfd",
  "serde",

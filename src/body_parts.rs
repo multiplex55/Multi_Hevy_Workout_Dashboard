@@ -1,5 +1,8 @@
 use phf::phf_map;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+
+use crate::exercise_mapping;
 
 /// Type of exercise based on muscle engagement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -258,16 +261,25 @@ pub fn info_for(exercise: &str) -> Option<&'static ExerciseInfo> {
 }
 
 /// Convenience wrapper returning only the primary muscle group.
-pub fn body_part_for(exercise: &str) -> Option<&'static str> {
-    info_for(exercise).map(|i| i.primary)
+pub fn body_part_for(exercise: &str) -> Option<String> {
+    if let Some(m) = exercise_mapping::get(exercise) {
+        if !m.primary.is_empty() {
+            return Some(m.primary);
+        }
+    }
+    info_for(exercise).map(|i| i.primary.to_string())
 }
 
 /// Return a sorted list of all unique primary muscle groups.
-pub fn primary_muscle_groups() -> Vec<&'static str> {
-    use std::collections::BTreeSet;
+pub fn primary_muscle_groups() -> Vec<String> {
     let mut set = BTreeSet::new();
     for info in EXERCISES.values() {
-        set.insert(info.primary);
+        set.insert(info.primary.to_string());
+    }
+    for m in exercise_mapping::all().values() {
+        if !m.primary.is_empty() {
+            set.insert(m.primary.clone());
+        }
     }
     set.into_iter().collect()
 }
@@ -280,4 +292,9 @@ pub fn difficulty_for(exercise: &str) -> Option<Difficulty> {
 /// Convenience wrapper returning the equipment classification.
 pub fn equipment_for(exercise: &str) -> Option<Equipment> {
     info_for(exercise).and_then(|i| i.equipment)
+}
+
+/// Return the high level category for an exercise from custom mappings.
+pub fn category_for(exercise: &str) -> Option<String> {
+    exercise_mapping::get(exercise).map(|m| m.category)
 }
