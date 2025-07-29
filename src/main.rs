@@ -25,6 +25,7 @@ mod export;
 use export::{save_entries_csv, save_entries_json, save_stats_csv, save_stats_json};
 mod body_parts;
 use body_parts::ExerciseType;
+mod exercise_mapping;
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 struct WorkoutEntry {
@@ -36,7 +37,7 @@ struct WorkoutEntry {
 }
 
 impl WorkoutEntry {
-    fn body_part(&self) -> Option<&'static str> {
+    fn body_part(&self) -> Option<String> {
         body_parts::body_part_for(&self.exercise)
     }
 
@@ -143,6 +144,14 @@ fn check_for_new_pr(repo: &str, last: Option<u64>) -> Option<u64> {
     None
 }
 
+fn default_plot_width() -> f32 {
+    400.0
+}
+
+fn default_plot_height() -> f32 {
+    200.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct Settings {
     show_weight: bool,
@@ -166,6 +175,10 @@ struct Settings {
     show_smoothed: bool,
     ma_window: usize,
     smoothing_method: SmoothingMethod,
+    #[serde(default = "default_plot_width")]
+    plot_width: f32,
+    #[serde(default = "default_plot_height")]
+    plot_height: f32,
     #[serde(default)]
     volume_aggregation: VolumeAggregation,
     #[serde(default)]
@@ -254,6 +267,8 @@ impl Default for Settings {
             show_smoothed: false,
             smoothing_method: SmoothingMethod::SimpleMA,
             ma_window: 5,
+            plot_width: 400.0,
+            plot_height: 200.0,
             volume_aggregation: VolumeAggregation::Weekly,
             body_part_volume_aggregation: VolumeAggregation::Weekly,
             weight_unit: WeightUnit::Lbs,
@@ -334,6 +349,10 @@ struct MyApp {
     summary_sort_ascending: bool,
     capture_rect: Option<egui::Rect>,
     settings_dirty: bool,
+    show_mapping: bool,
+    mapping_exercise: String,
+    mapping_dirty: bool,
+    mapping_entry: exercise_mapping::MuscleMapping,
     pr_toast_start: Option<Instant>,
     pr_message: Option<String>,
 }
@@ -341,6 +360,7 @@ struct MyApp {
 impl Default for MyApp {
     fn default() -> Self {
         let settings = Settings::load();
+        exercise_mapping::load();
         let show_exercise_stats = settings.show_exercise_stats;
         let show_personal_records = settings.show_personal_records;
         let show_exercise_panel = settings.show_exercise_panel;
@@ -369,6 +389,10 @@ impl Default for MyApp {
             summary_sort_ascending: true,
             capture_rect: None,
             settings_dirty: false,
+            show_mapping: false,
+            mapping_exercise: String::new(),
+            mapping_dirty: false,
+            mapping_entry: exercise_mapping::MuscleMapping::default(),
             pr_toast_start: None,
             pr_message: None,
         };
@@ -696,6 +720,8 @@ impl MyApp {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
                     let resp = Plot::new("weight_plot")
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -801,7 +827,8 @@ impl MyApp {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
                     let resp = Plot::new("est_1rm_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -905,7 +932,8 @@ impl MyApp {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
                     let resp = Plot::new("volume_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1011,7 +1039,8 @@ impl MyApp {
 
                 if self.settings.show_exercise_volume && sel.len() == 1 {
                     let resp = Plot::new("exercise_volume_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1047,7 +1076,8 @@ impl MyApp {
 
                 if self.settings.show_body_part_volume {
                     let resp = Plot::new("body_part_volume_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1087,7 +1117,8 @@ impl MyApp {
                         None
                     };
                     let resp = Plot::new("sets_plot")
-                        .height(200.0)
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
@@ -1104,7 +1135,12 @@ impl MyApp {
             });
         });
 
-        first_resp.unwrap_or_else(|| Plot::new("empty_plot").show(ui, |_ui| {}))
+        first_resp.unwrap_or_else(|| {
+            Plot::new("empty_plot")
+                .width(self.settings.plot_width)
+                .height(self.settings.plot_height)
+                .show(ui, |_ui| {})
+        })
     }
 
     fn sync_settings_from_app(&mut self) {
@@ -1238,6 +1274,10 @@ impl App for MyApp {
                         self.settings_dirty = true;
                         ui.close_menu();
                     }
+                    if ui.button("Muscle Mapping").clicked() {
+                        self.show_mapping = true;
+                        ui.close_menu();
+                    }
                     if ui.button("Usage Tips").clicked() {
                         self.show_about = true;
                         ui.close_menu();
@@ -1307,6 +1347,101 @@ impl App for MyApp {
                         ui.close_menu();
                     }
                 });
+            });
+        });
+
+        egui::TopBottomPanel::top("control_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Load CSV").clicked() {
+                    if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).pick_file() {
+                        let filename = path
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .unwrap_or_else(|| path.display().to_string());
+                        if let Ok(file) = File::open(&path) {
+                            if let Ok(entries) = parse_workout_csv(file) {
+                                self.workouts = entries;
+                            } else {
+                                self.workouts.clear();
+                            }
+                            info!("Loaded {} entries from {}", self.workouts.len(), filename);
+                            self.stats = compute_stats(
+                                &self.workouts,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            );
+                            self.update_filter_values();
+                            self.last_loaded = Some(filename);
+                            self.toast_start = Some(Instant::now());
+                            self.settings.last_file = Some(path.display().to_string());
+                            self.settings_dirty = true;
+                        }
+                    }
+                }
+
+                if !self.workouts.is_empty() {
+                    ui.label("Filter:");
+                    ui.text_edit_singleline(&mut self.search_query);
+
+                    let filtered = self.filtered_entries();
+                    let mut exercises = unique_exercises(
+                        &filtered,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    );
+                    if !self.search_query.is_empty() {
+                        let q = self.search_query.to_lowercase();
+                        exercises.retain(|e| e.to_lowercase().contains(&q));
+                    }
+
+                    ui.label("Exercises:");
+                    let resp = ui.menu_button(
+                        if self.selected_exercises.is_empty() {
+                            "Select Exercises".to_string()
+                        } else {
+                            self.selected_exercises.join(", ")
+                        },
+                        |ui| {
+                            for ex in &exercises {
+                                let mut sel = self.selected_exercises.contains(ex);
+                                if ui.checkbox(&mut sel, ex).changed() {
+                                    if sel {
+                                        if !self.selected_exercises.contains(ex) {
+                                            self.selected_exercises.push(ex.clone());
+                                        }
+                                    } else {
+                                        self.selected_exercises.retain(|e| e != ex);
+                                    }
+                                    self.update_selected_stats();
+                                }
+                            }
+                        },
+                    );
+                    let _ = ctx.input(|i| i.pointer.interact_pos());
+                    resp.response.context_menu(|ui| {
+                        if ui.button("Clear selection").clicked() {
+                            self.selected_exercises.clear();
+                            self.update_selected_stats();
+                            ui.close_menu();
+                        }
+                        for ex in self.selected_exercises.clone() {
+                            let label = format!("Remove {ex}");
+                            if ui.button(label).clicked() {
+                                self.selected_exercises.retain(|e| e != &ex);
+                                self.update_selected_stats();
+                                ui.close_menu();
+                            }
+                        }
+                    });
+
+                    if ui.button("Clear Exercises").clicked() {
+                        self.selected_exercises.clear();
+                        self.settings.selected_exercises.clear();
+                        self.settings_dirty = true;
+                        self.update_selected_stats();
+                    }
+                    // Plot action buttons moved to control bar
+                }
             });
         });
         egui::SidePanel::left("info_panel").show(ctx, |ui| {
@@ -1442,33 +1577,6 @@ impl App for MyApp {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            if ui.button("Load CSV").clicked() {
-                if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).pick_file() {
-                    let filename = path
-                        .file_name()
-                        .map(|f| f.to_string_lossy().to_string())
-                        .unwrap_or_else(|| path.display().to_string());
-                    if let Ok(file) = File::open(&path) {
-                        if let Ok(entries) = parse_workout_csv(file) {
-                            self.workouts = entries;
-                        } else {
-                            self.workouts.clear();
-                        }
-                        info!("Loaded {} entries from {}", self.workouts.len(), filename);
-                        self.stats = compute_stats(
-                            &self.workouts,
-                            self.settings.start_date,
-                            self.settings.end_date,
-                        );
-                        self.update_filter_values();
-                        self.last_loaded = Some(filename);
-                        self.toast_start = Some(Instant::now());
-                        self.settings.last_file = Some(path.display().to_string());
-                        self.settings_dirty = true;
-                    }
-                }
-            }
-
             if !self.workouts.is_empty() {
                 ui.heading("Workout Statistics");
                 if self.settings.start_date.is_some() || self.settings.end_date.is_some() {
@@ -1503,57 +1611,6 @@ impl App for MyApp {
                 ui.separator();
 
                 let filtered = self.filtered_entries();
-                let mut exercises =
-                    unique_exercises(&filtered, self.settings.start_date, self.settings.end_date);
-                if !self.search_query.is_empty() {
-                    let q = self.search_query.to_lowercase();
-                    exercises.retain(|e| e.to_lowercase().contains(&q));
-                }
-                ui.horizontal(|ui| {
-                    ui.label("Filter:");
-                    ui.text_edit_singleline(&mut self.search_query);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Exercises:");
-                    let resp = ui.menu_button(
-                        if self.selected_exercises.is_empty() {
-                            String::new()
-                        } else {
-                            self.selected_exercises.join(", ")
-                        },
-                        |ui| {
-                            for ex in &exercises {
-                                let mut sel = self.selected_exercises.contains(ex);
-                                if ui.checkbox(&mut sel, ex).changed() {
-                                    if sel {
-                                        if !self.selected_exercises.contains(ex) {
-                                            self.selected_exercises.push(ex.clone());
-                                        }
-                                    } else {
-                                        self.selected_exercises.retain(|e| e != ex);
-                                    }
-                                    self.update_selected_stats();
-                                }
-                            }
-                        },
-                    );
-                    let _ = ctx.input(|i| i.pointer.interact_pos());
-                    resp.response.context_menu(|ui| {
-                        if ui.button("Clear selection").clicked() {
-                            self.selected_exercises.clear();
-                            self.update_selected_stats();
-                            ui.close_menu();
-                        }
-                        for ex in self.selected_exercises.clone() {
-                            let label = format!("Remove {ex}");
-                            if ui.button(label).clicked() {
-                                self.selected_exercises.retain(|e| e != &ex);
-                                self.update_selected_stats();
-                                ui.close_menu();
-                            }
-                        }
-                    });
-                });
 
                 if self.selected_exercises.is_empty() {
                     ui.label("No exercises selected");
@@ -1888,6 +1945,81 @@ impl App for MyApp {
                 });
         }
 
+        if self.show_mapping {
+            let mut open = self.show_mapping;
+            egui::Window::new("Muscle Mapping")
+                .default_width(400.0)
+                .default_height(300.0)
+                .open(&mut open)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    let list = unique_exercises(&self.workouts, None, None);
+                    let mut selected = self.mapping_exercise.clone();
+                    egui::ComboBox::from_id_source("map_exercise_combo")
+                        .selected_text(if selected.is_empty() {
+                            "Select".into()
+                        } else {
+                            selected.clone()
+                        })
+                        .show_ui(ui, |ui| {
+                            for e in &list {
+                                ui.selectable_value(&mut selected, e.clone(), e);
+                            }
+                        });
+                    if selected != self.mapping_exercise {
+                        self.mapping_exercise = selected.clone();
+                        self.mapping_entry = exercise_mapping::get(&selected).unwrap_or_default();
+                    }
+                    if !self.mapping_exercise.is_empty() {
+                        let muscles = body_parts::primary_muscle_groups();
+                        egui::ComboBox::from_id_source("map_primary")
+                            .selected_text(if self.mapping_entry.primary.is_empty() {
+                                "Select"
+                            } else {
+                                &self.mapping_entry.primary
+                            })
+                            .show_ui(ui, |ui| {
+                                for m in &muscles {
+                                    ui.selectable_value(
+                                        &mut self.mapping_entry.primary,
+                                        m.clone(),
+                                        m,
+                                    );
+                                }
+                            });
+                        ui.label("Secondary:");
+                        for m in &muscles {
+                            let mut sel = self.mapping_entry.secondary.contains(m);
+                            if ui.checkbox(&mut sel, m).changed() {
+                                if sel {
+                                    if !self.mapping_entry.secondary.contains(m) {
+                                        self.mapping_entry.secondary.push(m.clone());
+                                    }
+                                } else {
+                                    self.mapping_entry.secondary.retain(|s| s != m);
+                                }
+                            }
+                        }
+                        ui.horizontal(|ui| {
+                            ui.label("Category:");
+                            ui.text_edit_singleline(&mut self.mapping_entry.category);
+                        });
+                        if ui.button("Save Mapping").clicked() {
+                            exercise_mapping::set(
+                                self.mapping_exercise.clone(),
+                                self.mapping_entry.clone(),
+                            );
+                            self.mapping_dirty = true;
+                        }
+                        if ui.button("Remove Mapping").clicked() {
+                            exercise_mapping::remove(&self.mapping_exercise);
+                            self.mapping_dirty = true;
+                        }
+                    }
+                });
+            self.show_mapping = open;
+        }
+
         if self.show_settings {
             let prev_start = self.settings.start_date;
             let prev_end = self.settings.end_date;
@@ -2026,6 +2158,26 @@ impl App for MyApp {
                                             });
                                         if prev != self.settings.smoothing_method {
                                             self.settings_dirty = true;
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Plot width:");
+                                        let mut w = format!("{:.0}", self.settings.plot_width);
+                                        if ui.text_edit_singleline(&mut w).changed() {
+                                            if let Ok(v) = w.parse::<f32>() {
+                                                self.settings.plot_width = v.max(50.0);
+                                                self.settings_dirty = true;
+                                            }
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Plot height:");
+                                        let mut h = format!("{:.0}", self.settings.plot_height);
+                                        if ui.text_edit_singleline(&mut h).changed() {
+                                            if let Ok(v) = h.parse::<f32>() {
+                                                self.settings.plot_height = v.max(50.0);
+                                                self.settings_dirty = true;
+                                            }
                                         }
                                     });
                                     ui.end_row();
@@ -2370,8 +2522,8 @@ impl App for MyApp {
                                                     for p in parts {
                                                         ui.selectable_value(
                                                             &mut self.settings.body_part_filter,
-                                                            Some(p.to_string()),
-                                                            p,
+                                                            Some(p.clone()),
+                                                            &p,
                                                         );
                                                     }
                                                 },
@@ -2611,11 +2763,16 @@ impl App for MyApp {
             self.settings.save();
             self.settings_dirty = false;
         }
+        if self.mapping_dirty {
+            exercise_mapping::save();
+            self.mapping_dirty = false;
+        }
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.sync_settings_from_app();
         self.settings.save();
+        exercise_mapping::save();
     }
 }
 
