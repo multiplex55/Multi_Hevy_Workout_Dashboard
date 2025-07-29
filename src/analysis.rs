@@ -125,7 +125,7 @@ pub fn aggregate_sets_by_body_part(
     for e in entries {
         if let (Some(bp), Some(d)) = (body_part_for(&e.exercise), parse_date(&e.date)) {
             if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                *map.entry(bp.to_string()).or_insert(0) += 1;
+                *map.entry(bp).or_insert(0) += 1;
             }
         }
     }

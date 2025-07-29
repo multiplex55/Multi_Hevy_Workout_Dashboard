@@ -25,6 +25,7 @@ mod export;
 use export::{save_entries_csv, save_entries_json, save_stats_csv, save_stats_json};
 mod body_parts;
 use body_parts::ExerciseType;
+mod exercise_mapping;
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 struct WorkoutEntry {
@@ -36,7 +37,7 @@ struct WorkoutEntry {
 }
 
 impl WorkoutEntry {
-    fn body_part(&self) -> Option<&'static str> {
+    fn body_part(&self) -> Option<String> {
         body_parts::body_part_for(&self.exercise)
     }
 
@@ -334,6 +335,9 @@ struct MyApp {
     summary_sort_ascending: bool,
     capture_rect: Option<egui::Rect>,
     settings_dirty: bool,
+    show_mapping: bool,
+    mapping_exercise: String,
+    mapping_dirty: bool,
     pr_toast_start: Option<Instant>,
     pr_message: Option<String>,
 }
@@ -341,6 +345,7 @@ struct MyApp {
 impl Default for MyApp {
     fn default() -> Self {
         let settings = Settings::load();
+        exercise_mapping::load();
         let show_exercise_stats = settings.show_exercise_stats;
         let show_personal_records = settings.show_personal_records;
         let show_exercise_panel = settings.show_exercise_panel;
@@ -369,6 +374,9 @@ impl Default for MyApp {
             summary_sort_ascending: true,
             capture_rect: None,
             settings_dirty: false,
+            show_mapping: false,
+            mapping_exercise: String::new(),
+            mapping_dirty: false,
             pr_toast_start: None,
             pr_message: None,
         };
@@ -1238,6 +1246,10 @@ impl App for MyApp {
                         self.settings_dirty = true;
                         ui.close_menu();
                     }
+                    if ui.button("Muscle Mapping").clicked() {
+                        self.show_mapping = true;
+                        ui.close_menu();
+                    }
                     if ui.button("Usage Tips").clicked() {
                         self.show_about = true;
                         ui.close_menu();
@@ -1307,6 +1319,97 @@ impl App for MyApp {
                         ui.close_menu();
                     }
                 });
+            });
+        });
+
+        egui::TopBottomPanel::top("control_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Load CSV").clicked() {
+                    if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).pick_file() {
+                        let filename = path
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .unwrap_or_else(|| path.display().to_string());
+                        if let Ok(file) = File::open(&path) {
+                            if let Ok(entries) = parse_workout_csv(file) {
+                                self.workouts = entries;
+                            } else {
+                                self.workouts.clear();
+                            }
+                            info!("Loaded {} entries from {}", self.workouts.len(), filename);
+                            self.stats = compute_stats(
+                                &self.workouts,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            );
+                            self.update_filter_values();
+                            self.last_loaded = Some(filename);
+                            self.toast_start = Some(Instant::now());
+                            self.settings.last_file = Some(path.display().to_string());
+                            self.settings_dirty = true;
+                        }
+                    }
+                }
+
+                if !self.workouts.is_empty() {
+                    ui.label("Filter:");
+                    ui.text_edit_singleline(&mut self.search_query);
+
+                    let filtered = self.filtered_entries();
+                    let mut exercises = unique_exercises(&filtered, self.settings.start_date, self.settings.end_date);
+                    if !self.search_query.is_empty() {
+                        let q = self.search_query.to_lowercase();
+                        exercises.retain(|e| e.to_lowercase().contains(&q));
+                    }
+
+                    ui.label("Exercises:");
+                    let resp = ui.menu_button(
+                        if self.selected_exercises.is_empty() {
+                            String::new()
+                        } else {
+                            self.selected_exercises.join(", ")
+                        },
+                        |ui| {
+                            for ex in &exercises {
+                                let mut sel = self.selected_exercises.contains(ex);
+                                if ui.checkbox(&mut sel, ex).changed() {
+                                    if sel {
+                                        if !self.selected_exercises.contains(ex) {
+                                            self.selected_exercises.push(ex.clone());
+                                        }
+                                    } else {
+                                        self.selected_exercises.retain(|e| e != ex);
+                                    }
+                                    self.update_selected_stats();
+                                }
+                            }
+                        },
+                    );
+                    let _ = ctx.input(|i| i.pointer.interact_pos());
+                    resp.response.context_menu(|ui| {
+                        if ui.button("Clear selection").clicked() {
+                            self.selected_exercises.clear();
+                            self.update_selected_stats();
+                            ui.close_menu();
+                        }
+                        for ex in self.selected_exercises.clone() {
+                            let label = format!("Remove {ex}");
+                            if ui.button(label).clicked() {
+                                self.selected_exercises.retain(|e| e != &ex);
+                                self.update_selected_stats();
+                                ui.close_menu();
+                            }
+                        }
+                    });
+
+                    if ui.button("Clear Exercises").clicked() {
+                        self.selected_exercises.clear();
+                        self.settings.selected_exercises.clear();
+                        self.settings_dirty = true;
+                        self.update_selected_stats();
+                    }
+                    // Plot action buttons moved to control bar
+                }
             });
         });
         egui::SidePanel::left("info_panel").show(ctx, |ui| {
@@ -1442,33 +1545,6 @@ impl App for MyApp {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            if ui.button("Load CSV").clicked() {
-                if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).pick_file() {
-                    let filename = path
-                        .file_name()
-                        .map(|f| f.to_string_lossy().to_string())
-                        .unwrap_or_else(|| path.display().to_string());
-                    if let Ok(file) = File::open(&path) {
-                        if let Ok(entries) = parse_workout_csv(file) {
-                            self.workouts = entries;
-                        } else {
-                            self.workouts.clear();
-                        }
-                        info!("Loaded {} entries from {}", self.workouts.len(), filename);
-                        self.stats = compute_stats(
-                            &self.workouts,
-                            self.settings.start_date,
-                            self.settings.end_date,
-                        );
-                        self.update_filter_values();
-                        self.last_loaded = Some(filename);
-                        self.toast_start = Some(Instant::now());
-                        self.settings.last_file = Some(path.display().to_string());
-                        self.settings_dirty = true;
-                    }
-                }
-            }
-
             if !self.workouts.is_empty() {
                 ui.heading("Workout Statistics");
                 if self.settings.start_date.is_some() || self.settings.end_date.is_some() {
@@ -1503,57 +1579,6 @@ impl App for MyApp {
                 ui.separator();
 
                 let filtered = self.filtered_entries();
-                let mut exercises =
-                    unique_exercises(&filtered, self.settings.start_date, self.settings.end_date);
-                if !self.search_query.is_empty() {
-                    let q = self.search_query.to_lowercase();
-                    exercises.retain(|e| e.to_lowercase().contains(&q));
-                }
-                ui.horizontal(|ui| {
-                    ui.label("Filter:");
-                    ui.text_edit_singleline(&mut self.search_query);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Exercises:");
-                    let resp = ui.menu_button(
-                        if self.selected_exercises.is_empty() {
-                            String::new()
-                        } else {
-                            self.selected_exercises.join(", ")
-                        },
-                        |ui| {
-                            for ex in &exercises {
-                                let mut sel = self.selected_exercises.contains(ex);
-                                if ui.checkbox(&mut sel, ex).changed() {
-                                    if sel {
-                                        if !self.selected_exercises.contains(ex) {
-                                            self.selected_exercises.push(ex.clone());
-                                        }
-                                    } else {
-                                        self.selected_exercises.retain(|e| e != ex);
-                                    }
-                                    self.update_selected_stats();
-                                }
-                            }
-                        },
-                    );
-                    let _ = ctx.input(|i| i.pointer.interact_pos());
-                    resp.response.context_menu(|ui| {
-                        if ui.button("Clear selection").clicked() {
-                            self.selected_exercises.clear();
-                            self.update_selected_stats();
-                            ui.close_menu();
-                        }
-                        for ex in self.selected_exercises.clone() {
-                            let label = format!("Remove {ex}");
-                            if ui.button(label).clicked() {
-                                self.selected_exercises.retain(|e| e != &ex);
-                                self.update_selected_stats();
-                                ui.close_menu();
-                            }
-                        }
-                    });
-                });
 
                 if self.selected_exercises.is_empty() {
                     ui.label("No exercises selected");
@@ -1886,6 +1911,66 @@ impl App for MyApp {
                     ui.label("\u{2022} Configure which plots are shown in the Settings window.");
                     ui.label("\u{2022} Open Raw Entries from the File menu to view all sets.");
                 });
+        }
+
+        if self.show_mapping {
+            let mut open = self.show_mapping;
+            egui::Window::new("Muscle Mapping")
+                .open(&mut open)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    let mut selected = self.mapping_exercise.clone();
+                    let list = unique_exercises(&self.workouts, None, None);
+                    egui::ComboBox::from_id_source("map_exercise_combo")
+                        .selected_text(if selected.is_empty() { "Select".into() } else { selected.clone() })
+                        .show_ui(ui, |ui| {
+                            for e in &list {
+                                ui.selectable_value(&mut selected, e.clone(), e);
+                            }
+                        });
+                    self.mapping_exercise = selected.clone();
+                    if !selected.is_empty() {
+                        let mut map = exercise_mapping::get(&selected).unwrap_or_default();
+                        let muscles = body_parts::primary_muscle_groups();
+                        let mut primary = map.primary.clone();
+                        egui::ComboBox::from_id_source("map_primary")
+                            .selected_text(if primary.is_empty() { "Select" } else { &primary })
+                            .show_ui(ui, |ui| {
+                                for m in &muscles {
+                                    ui.selectable_value(&mut primary, m.clone(), m);
+                                }
+                            });
+                        ui.label("Secondary:");
+                        let mut secondary = map.secondary.clone();
+                        for m in &muscles {
+                            let mut sel = secondary.contains(m);
+                            if ui.checkbox(&mut sel, m).changed() {
+                                if sel {
+                                    if !secondary.contains(m) { secondary.push(m.clone()); }
+                                } else {
+                                    secondary.retain(|s| s != m);
+                                }
+                            }
+                        }
+                        let mut category = map.category.clone();
+                        ui.horizontal(|ui| {
+                            ui.label("Category:");
+                            ui.text_edit_singleline(&mut category);
+                        });
+                        if ui.button("Save Mapping").clicked() {
+                            exercise_mapping::set(
+                                selected.clone(),
+                                exercise_mapping::MuscleMapping { primary, secondary, category },
+                            );
+                            self.mapping_dirty = true;
+                        }
+                        if ui.button("Remove Mapping").clicked() {
+                            exercise_mapping::remove(&selected);
+                            self.mapping_dirty = true;
+                        }
+                    }
+                });
+            self.show_mapping = open;
         }
 
         if self.show_settings {
@@ -2370,8 +2455,8 @@ impl App for MyApp {
                                                     for p in parts {
                                                         ui.selectable_value(
                                                             &mut self.settings.body_part_filter,
-                                                            Some(p.to_string()),
-                                                            p,
+                                                            Some(p.clone()),
+                                                            &p
                                                         );
                                                     }
                                                 },
@@ -2611,11 +2696,16 @@ impl App for MyApp {
             self.settings.save();
             self.settings_dirty = false;
         }
+        if self.mapping_dirty {
+            exercise_mapping::save();
+            self.mapping_dirty = false;
+        }
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.sync_settings_from_app();
         self.settings.save();
+        exercise_mapping::save();
     }
 }
 
