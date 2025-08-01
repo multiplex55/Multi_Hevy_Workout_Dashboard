@@ -17,7 +17,8 @@ mod plotting;
 use plotting::{
     OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
     body_part_volume_line, estimated_1rm_line, exercise_volume_line, sets_per_day_bar,
-    training_volume_line, trend_line_points, unique_exercises, weight_over_time_line,
+    training_volume_line, trend_line_points, unique_exercises, weekly_summary_plot,
+    weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -162,6 +163,8 @@ struct Settings {
     #[serde(default)]
     show_exercise_volume: bool,
     #[serde(default)]
+    show_weekly_summary: bool,
+    #[serde(default)]
     show_exercise_stats: bool,
     #[serde(default)]
     show_personal_records: bool,
@@ -258,6 +261,7 @@ impl Default for Settings {
             show_volume: false,
             show_body_part_volume: false,
             show_exercise_volume: false,
+            show_weekly_summary: false,
             show_exercise_stats: false,
             show_personal_records: false,
             show_exercise_panel: true,
@@ -1131,6 +1135,51 @@ impl MyApp {
                         });
 
                     first_resp.get_or_insert(resp);
+                }
+
+                if self.settings.show_weekly_summary {
+                    let weeks = analysis::aggregate_weekly_summary(
+                        filtered,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    );
+                    let weeks_for_axis = weeks.clone();
+                    let (bars, line) =
+                        weekly_summary_plot(&weeks, self.settings.weight_unit);
+                    let resp = Plot::new("weekly_summary_plot")
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
+                        .x_axis_formatter(move |mark, _chars, _| {
+                            let idx = mark.value.round() as usize;
+                            weeks_for_axis
+                                .get(idx)
+                                .map(|w| format!("{}-{:02}", w.year, w.week))
+                                .unwrap_or_else(|| format!("{:.0}", mark.value))
+                        })
+                        .legend(Legend::default())
+                        .show(ui, |plot_ui| {
+                            plot_ui.bar_chart(bars);
+                            plot_ui.line(line);
+                        });
+
+                    first_resp.get_or_insert(resp);
+                    let f = self.settings.weight_unit.factor();
+                    egui::Grid::new("weekly_summary_table")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.label("Year");
+                            ui.label("Week");
+                            ui.label("Sets");
+                            ui.label("Volume");
+                            ui.end_row();
+                            for w in &weeks {
+                                ui.label(w.year.to_string());
+                                ui.label(format!("{:02}", w.week));
+                                ui.label(w.total_sets.to_string());
+                                ui.label(format!("{:.1}", w.total_volume * f));
+                                ui.end_row();
+                            }
+                        });
                 }
             });
         });
@@ -2090,6 +2139,17 @@ impl App for MyApp {
 
                                     if ui
                                         .checkbox(
+                                            &mut self.settings.show_weekly_summary,
+                                            "Show Weekly Summary",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.end_row();
+
+                                    if ui
+                                        .checkbox(
                                             &mut self.settings.highlight_max,
                                             "Highlight maximums",
                                         )
@@ -2821,6 +2881,7 @@ mod tests {
         s.exclude_warmups = true;
         s.show_body_part_volume = true;
         s.show_exercise_volume = true;
+        s.show_weekly_summary = true;
         s.show_exercise_stats = true;
         s.show_personal_records = true;
         s.show_exercise_panel = false;

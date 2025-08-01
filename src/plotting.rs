@@ -2,7 +2,7 @@ use chrono::{Datelike, NaiveDate};
 use egui_plot::{Bar, BarChart, Line, PlotPoints};
 
 use crate::body_parts::body_part_for;
-use crate::{WeightUnit, WorkoutEntry};
+use crate::{analysis::WeeklySummary, WeightUnit, WorkoutEntry};
 use serde::{Deserialize, Serialize};
 
 /// Available formulas for estimating a one-rep max.
@@ -266,6 +266,27 @@ pub fn sets_per_day_bar(
         .map(|(idx, (_d, count))| Bar::new(idx as f64, count as f64))
         .collect();
     BarChart::new(bars).name("Sets")
+}
+
+/// Build a bar chart of weekly set counts and a line for weekly volume.
+pub fn weekly_summary_plot(
+    weeks: &[WeeklySummary],
+    unit: WeightUnit,
+) -> (BarChart, Line) {
+    let bars: Vec<Bar> = weeks
+        .iter()
+        .enumerate()
+        .map(|(idx, w)| Bar::new(idx as f64, w.total_sets as f64))
+        .collect();
+    let pts: Vec<[f64; 2]> = weeks
+        .iter()
+        .enumerate()
+        .map(|(idx, w)| [idx as f64, w.total_volume as f64 * unit.factor() as f64])
+        .collect();
+    (
+        BarChart::new(bars).name("Sets"),
+        Line::new(PlotPoints::from(pts)).name("Volume"),
+    )
 }
 
 /// Calculate total training volume (weight * reps) per workout date.
