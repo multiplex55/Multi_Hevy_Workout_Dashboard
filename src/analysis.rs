@@ -199,6 +199,32 @@ pub fn personal_records(
     map
 }
 
+/// Compute the average RPE for each date.
+///
+/// Only entries with an `rpe` value are considered. Sets outside the optional
+/// date range are ignored. The returned vector is sorted by date and contains
+/// the average RPE for that day.
+pub fn average_rpe_by_date(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> Vec<(NaiveDate, f32)> {
+    use std::collections::BTreeMap;
+    let mut map: BTreeMap<NaiveDate, (f32, usize)> = BTreeMap::new();
+    for e in entries {
+        if let (Some(rpe), Some(d)) = (e.raw.rpe, parse_date(&e.date)) {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let entry = map.entry(d).or_insert((0.0, 0));
+                entry.0 += rpe;
+                entry.1 += 1;
+            }
+        }
+    }
+    map.into_iter()
+        .map(|(d, (sum, count))| (d, sum / count as f32))
+        .collect()
+}
+
 /// Aggregate total sets and volume for each ISO week.
 ///
 /// The returned vector is sorted by `(year, week)`.
@@ -374,6 +400,7 @@ mod tests {
                 raw: RawWorkoutRow {
                     title: Some("Workout 1".into()),
                     start_time: "01 Jan 2024, 10:00".into(),
+                    rpe: Some(8.0),
                     ..RawWorkoutRow::default()
                 },
             },
@@ -385,6 +412,7 @@ mod tests {
                 raw: RawWorkoutRow {
                     title: Some("Workout 1".into()),
                     start_time: "01 Jan 2024, 10:00".into(),
+                    rpe: Some(7.0),
                     ..RawWorkoutRow::default()
                 },
             },
@@ -396,6 +424,7 @@ mod tests {
                 raw: RawWorkoutRow {
                     title: Some("Workout 2".into()),
                     start_time: "03 Jan 2024, 10:00".into(),
+                    rpe: Some(9.0),
                     ..RawWorkoutRow::default()
                 },
             },
@@ -407,6 +436,7 @@ mod tests {
                 raw: RawWorkoutRow {
                     title: Some("Workout 3".into()),
                     start_time: "05 Jan 2024, 10:00".into(),
+                    rpe: Some(8.5),
                     ..RawWorkoutRow::default()
                 },
             },
@@ -563,6 +593,22 @@ mod tests {
         assert!((deadlift.max_weight.unwrap() - 120.0).abs() < 1e-6);
         assert!((deadlift.max_volume.unwrap() - 600.0).abs() < 1e-6);
         assert!((deadlift.rep_prs.get(&5).unwrap() - 120.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_average_rpe_by_date() {
+        let entries = sample_entries();
+        let rpe = average_rpe_by_date(&entries, None, None);
+        assert_eq!(rpe.len(), 3);
+        let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
+        let d5 = NaiveDate::parse_from_str("2024-01-05", "%Y-%m-%d").unwrap();
+        assert_eq!(rpe[0].0, d1);
+        assert_eq!(rpe[1].0, d3);
+        assert_eq!(rpe[2].0, d5);
+        assert!((rpe[0].1 - 7.5).abs() < 1e-6);
+        assert!((rpe[1].1 - 9.0).abs() < 1e-6);
+        assert!((rpe[2].1 - 8.5).abs() < 1e-6);
     }
 
     #[test]
