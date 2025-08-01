@@ -41,6 +41,19 @@ pub struct ExerciseRecord {
     pub best_est_1rm: Option<f32>,
 }
 
+/// Weekly aggregate totals for sets and training volume.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WeeklySummary {
+    /// ISO week year.
+    pub year: i32,
+    /// ISO week number within the year.
+    pub week: u32,
+    /// Total number of sets performed in the week.
+    pub total_sets: usize,
+    /// Total training volume (weight * reps) for the week in lbs.
+    pub total_volume: f32,
+}
+
 /// Aggregate per-exercise statistics from a slice of workout entries.
 ///
 /// The data can be limited to an optional date range. Invalid dates are
@@ -174,6 +187,38 @@ pub fn personal_records(
         }
     }
     map
+}
+
+/// Aggregate total sets and volume for each ISO week.
+///
+/// The returned vector is sorted by `(year, week)`.
+pub fn aggregate_weekly_summary(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> Vec<WeeklySummary> {
+    use std::collections::BTreeMap;
+
+    let mut map: BTreeMap<(i32, u32), WeeklySummary> = BTreeMap::new();
+
+    for e in entries {
+        if let Some(d) = parse_date(&e.date) {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let iso = d.iso_week();
+                let key = (iso.year(), iso.week());
+                let entry = map.entry(key).or_insert(WeeklySummary {
+                    year: iso.year(),
+                    week: iso.week(),
+                    total_sets: 0,
+                    total_volume: 0.0,
+                });
+                entry.total_sets += 1;
+                entry.total_volume += e.weight * e.reps as f32;
+            }
+        }
+    }
+
+    map.into_iter().map(|(_, v)| v).collect()
 }
 
 fn parse_date(date: &str) -> Option<NaiveDate> {
@@ -505,5 +550,28 @@ mod tests {
         let deadlift = map.get("Deadlift").unwrap();
         assert!((deadlift.max_weight.unwrap() - 120.0).abs() < 1e-6);
         assert!((deadlift.max_volume.unwrap() - 600.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_aggregate_weekly_summary() {
+        let entries = sample_entries();
+        let weeks = aggregate_weekly_summary(&entries, None, None);
+        assert_eq!(weeks.len(), 1);
+        let w = &weeks[0];
+        assert_eq!(w.year, 2024);
+        assert_eq!(w.week, 1);
+        assert_eq!(w.total_sets, 4);
+        assert!((w.total_volume - 2025.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_aggregate_weekly_summary_range() {
+        let entries = sample_entries();
+        let start = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").ok();
+        let weeks = aggregate_weekly_summary(&entries, start, None);
+        assert_eq!(weeks.len(), 1);
+        let w = &weeks[0];
+        assert_eq!(w.total_sets, 2);
+        assert!((w.total_volume - 1125.0).abs() < 1e-6);
     }
 }
