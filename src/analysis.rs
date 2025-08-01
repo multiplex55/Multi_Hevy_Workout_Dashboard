@@ -39,6 +39,8 @@ pub struct ExerciseRecord {
     pub max_volume: Option<f32>,
     /// Best estimated one-rep max across all sets.
     pub best_est_1rm: Option<f32>,
+    /// Best weight achieved for each rep count.
+    pub rep_prs: HashMap<u32, f32>,
 }
 
 /// Weekly aggregate totals for sets and training volume.
@@ -170,6 +172,14 @@ pub fn personal_records(
                     Some(v) if v >= vol => Some(v),
                     _ => Some(vol),
                 };
+                rec.rep_prs
+                    .entry(e.reps)
+                    .and_modify(|w| {
+                        if e.weight > *w {
+                            *w = e.weight;
+                        }
+                    })
+                    .or_insert(e.weight);
                 let est = match formula {
                     OneRmFormula::Epley => e.weight * (1.0 + e.reps as f32 / 30.0),
                     OneRmFormula::Brzycki => {
@@ -541,15 +551,18 @@ mod tests {
         assert!((squat.max_weight.unwrap() - 105.0).abs() < 1e-6);
         assert!((squat.max_volume.unwrap() - 525.0).abs() < 1e-6);
         assert!((squat.best_est_1rm.unwrap() - 122.5).abs() < 1e-3);
+        assert!((squat.rep_prs.get(&5).unwrap() - 105.0).abs() < 1e-6);
 
         let bench = map.get("Bench").unwrap();
         assert!((bench.max_weight.unwrap() - 80.0).abs() < 1e-6);
         assert!((bench.max_volume.unwrap() - 400.0).abs() < 1e-6);
         assert!((bench.best_est_1rm.unwrap() - 93.3333).abs() < 1e-3);
+        assert!((bench.rep_prs.get(&5).unwrap() - 80.0).abs() < 1e-6);
 
         let deadlift = map.get("Deadlift").unwrap();
         assert!((deadlift.max_weight.unwrap() - 120.0).abs() < 1e-6);
         assert!((deadlift.max_volume.unwrap() - 600.0).abs() < 1e-6);
+        assert!((deadlift.rep_prs.get(&5).unwrap() - 120.0).abs() < 1e-6);
     }
 
     #[test]
