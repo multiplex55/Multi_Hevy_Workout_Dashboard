@@ -4,6 +4,7 @@ use egui_extras::DatePickerButton;
 use egui_plot::{Legend, Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::Cursor;
 use std::time::{Duration, Instant};
@@ -1144,8 +1145,7 @@ impl MyApp {
                         self.settings.end_date,
                     );
                     let weeks_for_axis = weeks.clone();
-                    let (bars, line) =
-                        weekly_summary_plot(&weeks, self.settings.weight_unit);
+                    let (bars, line) = weekly_summary_plot(&weeks, self.settings.weight_unit);
                     let resp = Plot::new("weekly_summary_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -1892,6 +1892,18 @@ impl App for MyApp {
                         self.settings.start_date,
                         self.settings.end_date,
                     );
+                    let rec_map = analysis::personal_records(
+                        &entries,
+                        self.settings.one_rm_formula,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    );
+                    let mut rep_counts: BTreeSet<u32> = BTreeSet::new();
+                    for rec in rec_map.values() {
+                        for reps in rec.rep_prs.keys() {
+                            rep_counts.insert(*reps);
+                        }
+                    }
                     let f = self.settings.weight_unit.factor();
                     egui::Grid::new("exercise_stats_grid")
                         .striped(true)
@@ -1927,6 +1939,33 @@ impl App for MyApp {
                                 }
                             }
                         });
+                    if !rep_counts.is_empty() {
+                        ui.separator();
+                        egui::Grid::new("rep_pr_grid").striped(true).show(ui, |ui| {
+                            ui.label("Exercise");
+                            for reps in &rep_counts {
+                                ui.label(reps.to_string());
+                            }
+                            ui.end_row();
+                            for ex in &self.selected_exercises {
+                                ui.label(ex);
+                                if let Some(rec) = rec_map.get(ex) {
+                                    for reps in &rep_counts {
+                                        if let Some(w) = rec.rep_prs.get(reps) {
+                                            ui.label(format!("{:.1}", w * f));
+                                        } else {
+                                            ui.label("-");
+                                        }
+                                    }
+                                } else {
+                                    for _ in &rep_counts {
+                                        ui.label("-");
+                                    }
+                                }
+                                ui.end_row();
+                            }
+                        });
+                    }
                 });
             self.show_exercise_stats = open;
         }
