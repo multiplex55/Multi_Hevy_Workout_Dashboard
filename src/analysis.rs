@@ -93,6 +93,21 @@ pub fn aggregate_exercise_stats(
                         }
                         e.weight * 36.0 / (37.0 - e.reps as f32)
                     }
+                    OneRmFormula::Lander => {
+                        let denom = 1.013 - 0.026_712_3 * e.reps as f32;
+                        if denom <= 0.0 {
+                            continue;
+                        }
+                        e.weight / denom
+                    }
+                    OneRmFormula::Lombardi => e.weight * (e.reps as f32).powf(0.10),
+                    OneRmFormula::Mayhew => {
+                        100.0 * e.weight / (52.2 + 41.9 * (-0.055 * e.reps as f32).exp())
+                    }
+                    OneRmFormula::OConner => e.weight * (1.0 + 0.025 * e.reps as f32),
+                    OneRmFormula::Wathan => {
+                        100.0 * e.weight / (48.8 + 53.8 * (-0.075 * e.reps as f32).exp())
+                    }
                 };
                 stats.best_est_1rm = match stats.best_est_1rm {
                     Some(current) if current >= est => Some(current),
@@ -187,6 +202,21 @@ pub fn personal_records(
                             continue;
                         }
                         e.weight * 36.0 / (37.0 - e.reps as f32)
+                    }
+                    OneRmFormula::Lander => {
+                        let denom = 1.013 - 0.026_712_3 * e.reps as f32;
+                        if denom <= 0.0 {
+                            continue;
+                        }
+                        e.weight / denom
+                    }
+                    OneRmFormula::Lombardi => e.weight * (e.reps as f32).powf(0.10),
+                    OneRmFormula::Mayhew => {
+                        100.0 * e.weight / (52.2 + 41.9 * (-0.055 * e.reps as f32).exp())
+                    }
+                    OneRmFormula::OConner => e.weight * (1.0 + 0.025 * e.reps as f32),
+                    OneRmFormula::Wathan => {
+                        100.0 * e.weight / (48.8 + 53.8 * (-0.075 * e.reps as f32).exp())
                     }
                 };
                 rec.best_est_1rm = match rec.best_est_1rm {

@@ -2346,6 +2346,11 @@ impl App for MyApp {
                                                 .selected_text(match self.settings.one_rm_formula {
                                                     OneRmFormula::Epley => "Epley",
                                                     OneRmFormula::Brzycki => "Brzycki",
+                                                    OneRmFormula::Lander => "Lander",
+                                                    OneRmFormula::Lombardi => "Lombardi",
+                                                    OneRmFormula::Mayhew => "Mayhew",
+                                                    OneRmFormula::OConner => "O'Conner",
+                                                    OneRmFormula::Wathan => "Wathan",
                                                 })
                                                 .show_ui(ui, |ui| {
                                                     ui.selectable_value(
@@ -2357,6 +2362,31 @@ impl App for MyApp {
                                                         &mut self.settings.one_rm_formula,
                                                         OneRmFormula::Brzycki,
                                                         "Brzycki",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut self.settings.one_rm_formula,
+                                                        OneRmFormula::Lander,
+                                                        "Lander",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut self.settings.one_rm_formula,
+                                                        OneRmFormula::Lombardi,
+                                                        "Lombardi",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut self.settings.one_rm_formula,
+                                                        OneRmFormula::Mayhew,
+                                                        "Mayhew",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut self.settings.one_rm_formula,
+                                                        OneRmFormula::OConner,
+                                                        "O'Conner",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut self.settings.one_rm_formula,
+                                                        OneRmFormula::Wathan,
+                                                        "Wathan",
                                                     );
                                                 });
                                             if prev != self.settings.one_rm_formula {
@@ -2900,7 +2930,7 @@ mod tests {
         s.show_smoothed = true;
         s.ma_window = 3;
         s.smoothing_method = SmoothingMethod::EMA;
-        s.one_rm_formula = OneRmFormula::Brzycki;
+        s.one_rm_formula = OneRmFormula::Wathan;
         s.start_date = Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
         s.end_date = Some(NaiveDate::from_ymd_opt(2024, 2, 1).unwrap());
         s.x_axis = XAxis::WorkoutIndex;

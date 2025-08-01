@@ -2,7 +2,7 @@ use chrono::{Datelike, NaiveDate};
 use egui_plot::{Bar, BarChart, Line, PlotPoints};
 
 use crate::body_parts::body_part_for;
-use crate::{analysis::WeeklySummary, WeightUnit, WorkoutEntry};
+use crate::{WeightUnit, WorkoutEntry, analysis::WeeklySummary};
 use serde::{Deserialize, Serialize};
 
 /// Available formulas for estimating a one-rep max.
@@ -12,6 +12,16 @@ pub enum OneRmFormula {
     Epley,
     /// Brzycki formula: `weight * 36 / (37 - reps)`.
     Brzycki,
+    /// Lander formula: `weight / (1.013 - 0.0267123 * reps)`.
+    Lander,
+    /// Lombardi formula: `weight * reps^0.10`.
+    Lombardi,
+    /// Mayhew formula: `(100 * weight) / (52.2 + 41.9 * e^{-0.055 * reps})`.
+    Mayhew,
+    /// O'Conner formula: `weight * (1 + 0.025 * reps)`.
+    OConner,
+    /// Wathan formula: `(100 * weight) / (48.8 + 53.8 * e^{-0.075 * reps})`.
+    Wathan,
 }
 
 /// Options for mapping data to the x-axis.
@@ -195,6 +205,25 @@ pub fn estimated_1rm_line(
                             }
                             e.weight as f64 * f * 36.0 / (37.0 - e.reps as f64)
                         }
+                        OneRmFormula::Lander => {
+                            let denom = 1.013 - 0.026_712_3 * e.reps as f64;
+                            if denom <= 0.0 {
+                                continue;
+                            }
+                            e.weight as f64 * f / denom
+                        }
+                        OneRmFormula::Lombardi => e.weight as f64 * f * (e.reps as f64).powf(0.10),
+                        OneRmFormula::Mayhew => {
+                            100.0 * e.weight as f64 * f
+                                / (52.2 + 41.9 * (-0.055 * e.reps as f64).exp())
+                        }
+                        OneRmFormula::OConner => {
+                            e.weight as f64 * f * (1.0 + 0.025 * e.reps as f64)
+                        }
+                        OneRmFormula::Wathan => {
+                            100.0 * e.weight as f64 * f
+                                / (48.8 + 53.8 * (-0.075 * e.reps as f64).exp())
+                        }
                     };
                     let x = match x_axis {
                         XAxis::Date => d.num_days_from_ce() as f64,
@@ -269,10 +298,7 @@ pub fn sets_per_day_bar(
 }
 
 /// Build a bar chart of weekly set counts and a line for weekly volume.
-pub fn weekly_summary_plot(
-    weeks: &[WeeklySummary],
-    unit: WeightUnit,
-) -> (BarChart, Line) {
+pub fn weekly_summary_plot(weeks: &[WeeklySummary], unit: WeightUnit) -> (BarChart, Line) {
     let bars: Vec<Bar> = weeks
         .iter()
         .enumerate()
@@ -1118,5 +1144,27 @@ mod tests {
         assert_eq!(line_points(lw_b.line), expected_b);
         assert_eq!(lw_b.max_point, Some(expected_b[0]));
         assert_eq!(lw_b.label.as_deref(), Some("Max 1RM"));
+
+        let res_l = estimated_1rm_line(
+            &sample_entries(),
+            &["Squat".to_string()],
+            OneRmFormula::Lombardi,
+            None,
+            None,
+            XAxis::Date,
+            WeightUnit::Lbs,
+            None,
+            SmoothingMethod::SimpleMA,
+        );
+        assert_eq!(res_l.len(), 1);
+        let pow = (5.0f64).powf(0.10);
+        let expected_l = vec![
+            [d1.num_days_from_ce() as f64, 100.0 * pow],
+            [d3.num_days_from_ce() as f64, 105.0 * pow],
+        ];
+        let lw_l = res_l.into_iter().next().unwrap();
+        assert_eq!(line_points(lw_l.line), expected_l);
+        assert_eq!(lw_l.max_point, Some(expected_l[1]));
+        assert_eq!(lw_l.label.as_deref(), Some("Max 1RM"));
     }
 }
