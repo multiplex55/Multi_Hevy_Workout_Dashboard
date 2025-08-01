@@ -17,9 +17,9 @@ use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
     OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
-    body_part_volume_line, estimated_1rm_line, exercise_volume_line, sets_per_day_bar,
-    training_volume_line, trend_line_points, unique_exercises, weekly_summary_plot,
-    weight_over_time_line,
+    body_part_volume_line, estimated_1rm_line, exercise_volume_line, rpe_over_time_line,
+    sets_per_day_bar, training_volume_line, trend_line_points, unique_exercises,
+    weekly_summary_plot, weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -160,6 +160,8 @@ struct Settings {
     show_est_1rm: bool,
     show_sets: bool,
     show_volume: bool,
+    #[serde(default)]
+    show_rpe_trend: bool,
     show_body_part_volume: bool,
     #[serde(default)]
     show_exercise_volume: bool,
@@ -260,6 +262,7 @@ impl Default for Settings {
             show_est_1rm: true,
             show_sets: true,
             show_volume: false,
+            show_rpe_trend: false,
             show_body_part_volume: false,
             show_exercise_volume: false,
             show_weekly_summary: false,
@@ -1134,6 +1137,80 @@ impl MyApp {
                                 self.settings.end_date,
                             ));
                         });
+
+                    first_resp.get_or_insert(resp);
+                }
+
+                if self.settings.show_rpe_trend {
+                    let mut all_points: Vec<[f64; 2]> = Vec::new();
+                    let mut highlight: Option<[f64; 2]> = None;
+                    let resp = Plot::new("rpe_trend_plot")
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
+                        .x_axis_formatter(move |mark, _chars, _| {
+                            if x_axis == XAxis::Date {
+                                NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
+                                    .map(|d| d.format("%Y-%m-%d").to_string())
+                                    .unwrap_or_else(|| format!("{:.0}", mark.value))
+                            } else {
+                                format!("{:.0}", mark.value)
+                            }
+                        })
+                        .legend(Legend::default())
+                        .show(ui, |plot_ui| {
+                            let pointer = plot_ui.pointer_coordinate();
+                            let ma = if self.settings.show_smoothed {
+                                Some(self.settings.ma_window)
+                            } else {
+                                None
+                            };
+                            for l in rpe_over_time_line(
+                                filtered,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                                self.settings.x_axis,
+                                ma,
+                                self.settings.smoothing_method,
+                            ) {
+                                if let PlotGeometry::Points(pts) = l.geometry() {
+                                    for p in pts {
+                                        all_points.push([p.x, p.y]);
+                                    }
+                                }
+                                plot_ui.line(l);
+                            }
+                            if let Some(ptr) = pointer {
+                                if let Some(p) = nearest_point(ptr, &all_points) {
+                                    highlight = Some(p);
+                                    plot_ui.points(
+                                        Points::new(vec![p])
+                                            .color(egui::Color32::YELLOW)
+                                            .highlight(true)
+                                            .name("Hovered"),
+                                    );
+                                }
+                            }
+                        });
+
+                    if let Some(p) = highlight {
+                        if resp.response.hovered() {
+                            egui::show_tooltip_at_pointer(
+                                ctx,
+                                egui::Id::new("plot_tip_rpe"),
+                                |ui| {
+                                    let x_text = match self.settings.x_axis {
+                                        XAxis::Date => {
+                                            NaiveDate::from_num_days_from_ce_opt(p[0] as i32)
+                                                .map(|d| d.format("%Y-%m-%d").to_string())
+                                                .unwrap_or_else(|| format!("{}", p[0] as i64))
+                                        }
+                                        XAxis::WorkoutIndex => format!("{}", p[0] as i64),
+                                    };
+                                    ui.label(format!("{x_text}: {:.2}", p[1]));
+                                },
+                            );
+                        }
+                    }
 
                     first_resp.get_or_insert(resp);
                 }
@@ -2185,6 +2262,15 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
+                                    if ui
+                                        .checkbox(
+                                            &mut self.settings.show_rpe_trend,
+                                            "Show RPE Trend",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
                                     ui.end_row();
 
                                     if ui
@@ -2895,6 +2981,7 @@ mod tests {
         s.show_weight = false;
         s.show_est_1rm = false;
         s.show_sets = false;
+        s.show_rpe_trend = true;
         s.show_weight_trend = true;
         s.show_volume_trend = true;
         s.show_smoothed = true;

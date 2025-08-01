@@ -2,7 +2,7 @@ use chrono::{Datelike, NaiveDate};
 use egui_plot::{Bar, BarChart, Line, PlotPoints};
 
 use crate::body_parts::body_part_for;
-use crate::{analysis::WeeklySummary, WeightUnit, WorkoutEntry};
+use crate::{analysis::{WeeklySummary, average_rpe_by_date}, WeightUnit, WorkoutEntry};
 use serde::{Deserialize, Serialize};
 
 /// Available formulas for estimating a one-rep max.
@@ -521,6 +521,48 @@ pub fn training_volume_line(
     lines
 }
 
+/// Create a line plot of average RPE over time.
+///
+/// RPE values are averaged per day. Entries without an RPE value are ignored.
+pub fn rpe_over_time_line(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+    x_axis: XAxis,
+    ma_window: Option<usize>,
+    method: SmoothingMethod,
+) -> Vec<Line> {
+    let data = average_rpe_by_date(entries, start, end);
+    let mut points = Vec::new();
+    let mut idx = 0usize;
+    for (d, rpe) in data {
+        let x = match x_axis {
+            XAxis::Date => d.num_days_from_ce() as f64,
+            XAxis::WorkoutIndex => {
+                let v = idx as f64;
+                idx += 1;
+                v
+            }
+        };
+        points.push([x, rpe as f64]);
+    }
+    let mut lines = Vec::new();
+    lines.push(Line::new(PlotPoints::from(points.clone())).name("Avg RPE"));
+    if let Some(w) = ma_window.filter(|w| *w > 1) {
+        if points.len() > 1 {
+            let smooth = match method {
+                SmoothingMethod::SimpleMA => moving_average_points(&points, w),
+                SmoothingMethod::EMA => {
+                    let alpha = 2.0 / (w as f64 + 1.0);
+                    ema_points(&points, alpha)
+                }
+            };
+            lines.push(Line::new(PlotPoints::from(smooth)).name("Avg RPE MA"));
+        }
+    }
+    lines
+}
+
 /// Create a line plot of training volume per primary body part.
 ///
 /// Each body part is plotted separately. Entries outside the optional date
@@ -653,21 +695,21 @@ mod tests {
                 exercise: "Squat".into(),
                 weight: 100.0,
                 reps: 5,
-                raw: RawWorkoutRow::default(),
+                raw: RawWorkoutRow { rpe: Some(8.0), ..RawWorkoutRow::default() },
             },
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
                 weight: 80.0,
                 reps: 5,
-                raw: RawWorkoutRow::default(),
+                raw: RawWorkoutRow { rpe: Some(7.0), ..RawWorkoutRow::default() },
             },
             WorkoutEntry {
                 date: "2024-01-03".into(),
                 exercise: "Squat".into(),
                 weight: 105.0,
                 reps: 5,
-                raw: RawWorkoutRow::default(),
+                raw: RawWorkoutRow { rpe: Some(9.0), ..RawWorkoutRow::default() },
             },
         ]
     }
@@ -800,6 +842,28 @@ mod tests {
         let expected = vec![
             [d1.num_days_from_ce() as f64, 900.0],
             [d3.num_days_from_ce() as f64, 525.0],
+        ];
+        assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_rpe_over_time_line() {
+        let line = rpe_over_time_line(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::Date,
+            None,
+            SmoothingMethod::SimpleMA,
+        )
+        .into_iter()
+        .next()
+        .unwrap();
+        let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
+        let expected = vec![
+            [d1.num_days_from_ce() as f64, 7.5],
+            [d3.num_days_from_ce() as f64, 9.0],
         ];
         assert_eq!(line_points(line), expected);
     }
