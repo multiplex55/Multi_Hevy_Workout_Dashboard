@@ -115,6 +115,19 @@ impl Default for VolumeAggregation {
     }
 }
 
+/// Metric to use when building a histogram.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HistogramMetric {
+    /// Histogram of set weights.
+    Weight { bin: f64 },
+    /// Histogram of training volume (weight * reps).
+    Volume { bin: f64 },
+    /// Histogram of RPE values.
+    Rpe { bin: f64 },
+    /// Histogram of repetition counts.
+    Reps { bin: f64 },
+}
+
 /// Result of generating a plot line with an optional marker for the maximum value.
 pub struct LineWithMarker {
     pub line: Line,
@@ -310,6 +323,58 @@ pub fn rep_histogram(
         .map(|(reps, count)| Bar::new(reps as f64, count as f64))
         .collect();
     BarChart::new(bars).name("Reps")
+}
+
+/// Build a histogram of the chosen `metric` across `entries`.
+///
+/// Only entries within the optional date range are considered. Weights and
+/// volumes are converted using `unit`.
+pub fn histogram(
+    entries: &[WorkoutEntry],
+    metric: HistogramMetric,
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+    unit: WeightUnit,
+) -> BarChart {
+    use std::collections::BTreeMap;
+
+    let (bin_size, name) = match metric {
+        HistogramMetric::Weight { bin } => (bin, "Weight"),
+        HistogramMetric::Volume { bin } => (bin, "Volume"),
+        HistogramMetric::Rpe { bin } => (bin, "RPE"),
+        HistogramMetric::Reps { bin } => (bin, "Reps"),
+    };
+    let f = unit.factor() as f64;
+    let mut map: BTreeMap<i64, usize> = BTreeMap::new();
+    for e in entries {
+        if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let val = match metric {
+                    HistogramMetric::Weight { .. } => Some(e.weight as f64 * f),
+                    HistogramMetric::Volume { .. } => {
+                        Some(e.weight as f64 * f * e.reps as f64)
+                    }
+                    HistogramMetric::Rpe { .. } => e.raw.rpe.map(|r| r as f64),
+                    HistogramMetric::Reps { .. } => Some(e.reps as f64),
+                };
+                if let Some(v) = val {
+                    if bin_size > 0.0 {
+                        let idx = (v / bin_size).floor() as i64;
+                        *map.entry(idx).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    let bars: Vec<Bar> = map
+        .into_iter()
+        .map(|(idx, count)| {
+            let x = idx as f64 * bin_size + bin_size / 2.0;
+            Bar::new(x, count as f64).width(bin_size)
+        })
+        .collect();
+    BarChart::new(bars).name(name)
 }
 
 /// Create a bar chart of how many sets were performed on each day.
@@ -1379,6 +1444,22 @@ mod tests {
         assert!(matches!(chart.geometry(), PlotGeometry::Rects));
         let bounds = PlotItem::bounds(&chart);
         assert!((bounds.max()[1] - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_weight_histogram_counts() {
+        let entries = sample_entries();
+        let chart = histogram(
+            &entries,
+            HistogramMetric::Weight { bin: 10.0 },
+            None,
+            None,
+            WeightUnit::Lbs,
+        );
+        assert!(matches!(chart.geometry(), PlotGeometry::Rects));
+        let bounds = PlotItem::bounds(&chart);
+        // Two entries fall into the same 10 lb bin (100-110).
+        assert!((bounds.max()[1] - 2.0).abs() < 1e-6);
     }
 
     #[test]
