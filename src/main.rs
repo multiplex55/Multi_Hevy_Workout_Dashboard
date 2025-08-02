@@ -19,9 +19,10 @@ use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
     OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
-    body_part_distribution, body_part_volume_line, estimated_1rm_line, exercise_volume_line,
-    rep_histogram, rpe_over_time_line, sets_per_day_bar, training_volume_line, trend_line_points,
-    unique_exercises, weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
+    body_part_distribution, body_part_volume_line, body_part_volume_trend, estimated_1rm_line,
+    exercise_volume_line, rep_histogram, rpe_over_time_line, sets_per_day_bar,
+    training_volume_line, trend_line_points, unique_exercises, weekly_summary_plot,
+    weight_over_time_line, weight_reps_scatter,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -186,6 +187,8 @@ struct Settings {
     #[serde(default)]
     show_body_part_distribution: bool,
     #[serde(default)]
+    show_body_part_trend: bool,
+    #[serde(default)]
     show_exercise_volume: bool,
     #[serde(default)]
     show_weekly_summary: bool,
@@ -298,6 +301,7 @@ impl Default for Settings {
             show_rpe_trend: false,
             show_body_part_volume: false,
             show_body_part_distribution: false,
+            show_body_part_trend: false,
             show_exercise_volume: false,
             show_weekly_summary: false,
             show_exercise_stats: false,
@@ -1146,6 +1150,17 @@ impl MyApp {
                                 ma,
                             ) {
                                 plot_ui.line(l);
+                            }
+                            if self.settings.show_body_part_trend {
+                                for l in body_part_volume_trend(
+                                    filtered,
+                                    self.settings.start_date,
+                                    self.settings.end_date,
+                                    self.settings.weight_unit,
+                                    self.settings.body_part_volume_aggregation,
+                                ) {
+                                    plot_ui.line(l);
+                                }
                             }
                         });
 
@@ -2387,6 +2402,17 @@ impl App for MyApp {
 
                                     if ui
                                         .checkbox(
+                                            &mut self.settings.show_body_part_trend,
+                                            "Show Body Part Trend",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.end_row();
+
+                                    if ui
+                                        .checkbox(
                                             &mut self.settings.show_exercise_volume,
                                             "Show Exercise Volume",
                                         )
@@ -3194,6 +3220,7 @@ mod tests {
         s.exclude_warmups = true;
         s.show_body_part_volume = true;
         s.show_body_part_distribution = true;
+        s.show_body_part_trend = true;
         s.show_exercise_volume = true;
         s.show_weekly_summary = true;
         s.show_exercise_stats = true;
