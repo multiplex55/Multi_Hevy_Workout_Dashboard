@@ -2,6 +2,7 @@
 
 use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
+use egui::RichText;
 use egui_extras::DatePickerButton;
 use egui_plot::{Legend, Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points};
 use rfd::FileDialog;
@@ -13,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{Local, NaiveDate};
 use log::info;
+use strsim::damerau_levenshtein;
 
 mod analysis;
 use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
@@ -1238,7 +1240,11 @@ impl MyApp {
                         .y_axis_label("Reps")
                         .label_formatter(move |name, value| {
                             let base = format!("{:.0} {unit_label}, {:.0} reps", value.x, value.y);
-                            if name.is_empty() { base } else { format!("{name}: {base}") }
+                            if name.is_empty() {
+                                base
+                            } else {
+                                format!("{name}: {base}")
+                            }
                         })
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
@@ -1637,14 +1643,22 @@ impl App for MyApp {
                     ui.text_edit_singleline(&mut self.search_query);
 
                     let filtered = self.filtered_entries();
-                    let mut exercises = unique_exercises(
+                    let mut exercises: Vec<(String, usize)> = unique_exercises(
                         &filtered,
                         self.settings.start_date,
                         self.settings.end_date,
-                    );
+                    )
+                    .into_iter()
+                    .map(|e| (e, usize::MAX))
+                    .collect();
                     if !self.search_query.is_empty() {
                         let q = self.search_query.to_lowercase();
-                        exercises.retain(|e| e.to_lowercase().contains(&q));
+                        for (e, dist) in &mut exercises {
+                            *dist = damerau_levenshtein(&e.to_lowercase(), &q);
+                        }
+                        exercises.sort_by_key(|(_, d)| *d);
+                        let threshold = (q.len() / 2).max(1);
+                        exercises.retain(|(_, d)| *d <= threshold);
                     }
 
                     ui.label("Exercises:");
@@ -1655,9 +1669,14 @@ impl App for MyApp {
                             self.selected_exercises.join(", ")
                         },
                         |ui| {
-                            for ex in &exercises {
+                            for (idx, (ex, _dist)) in exercises.iter().enumerate() {
                                 let mut sel = self.selected_exercises.contains(ex);
-                                if ui.checkbox(&mut sel, ex).changed() {
+                                let label = if idx < 3 && !self.search_query.is_empty() {
+                                    RichText::new(ex).color(egui::Color32::LIGHT_GREEN)
+                                } else {
+                                    RichText::new(ex)
+                                };
+                                if ui.add(egui::Checkbox::new(&mut sel, label)).changed() {
                                     if sel {
                                         if !self.selected_exercises.contains(ex) {
                                             self.selected_exercises.push(ex.clone());
