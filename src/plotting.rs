@@ -757,6 +757,65 @@ pub fn body_part_volume_line(
     lines
 }
 
+/// Generate trend lines of training volume per primary body part.
+///
+/// Volume is aggregated by the specified period and converted to the desired
+/// `unit`. Only entries within the optional `start` and `end` dates and with a
+/// known body part are considered. Each returned [`Line`] represents the
+/// trend for a single body part.
+pub fn body_part_volume_trend(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+    unit: WeightUnit,
+    agg: VolumeAggregation,
+) -> Vec<Line> {
+    use std::collections::BTreeMap;
+
+    let mut map: BTreeMap<String, BTreeMap<NaiveDate, f64>> = BTreeMap::new();
+    for e in entries {
+        if let (Some(part), Ok(d)) = (
+            body_part_for(&e.exercise),
+            NaiveDate::parse_from_str(&e.date, "%Y-%m-%d"),
+        ) {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let f = unit.factor() as f64;
+                let key_date = match agg {
+                    VolumeAggregation::Daily => d,
+                    VolumeAggregation::Weekly => NaiveDate::from_isoywd_opt(
+                        d.iso_week().year(),
+                        d.iso_week().week(),
+                        chrono::Weekday::Mon,
+                    )
+                    .unwrap_or(d),
+                    VolumeAggregation::Monthly => {
+                        NaiveDate::from_ymd_opt(d.year(), d.month(), 1).unwrap_or(d)
+                    }
+                };
+                *map.entry(part.to_string())
+                    .or_default()
+                    .entry(key_date)
+                    .or_insert(0.0) += e.weight as f64 * f * e.reps as f64;
+            }
+        }
+    }
+
+    let mut lines = Vec::new();
+    for (part, day_map) in map {
+        let mut points = Vec::new();
+        for (d, vol) in day_map {
+            points.push([d.num_days_from_ce() as f64, vol]);
+        }
+        let trend = trend_line_points(&points);
+        if trend.len() == 2 {
+            lines.push(
+                Line::new(PlotPoints::from(trend)).name(format!("{part} Trend")),
+            );
+        }
+    }
+    lines
+}
+
 /// Create a line plot of training volume for a single exercise.
 ///
 /// Volume is aggregated according to `agg`.
@@ -1240,6 +1299,27 @@ mod tests {
         for (l, exp) in lines.into_iter().zip(expected) {
             assert_eq!(line_points(l), exp);
         }
+    }
+
+    #[test]
+    fn test_body_part_volume_trend() {
+        let lines = body_part_volume_trend(
+            &sample_entries(),
+            None,
+            None,
+            WeightUnit::Lbs,
+            VolumeAggregation::Daily,
+        );
+        // Only the "Quads" body part has two data points, so only one trend line is returned
+        assert_eq!(lines.len(), 1);
+        let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
+        let expected = vec![
+            [d1.num_days_from_ce() as f64, 500.0],
+            [d3.num_days_from_ce() as f64, 525.0],
+        ];
+        let pts = line_points(lines.into_iter().next().unwrap());
+        assert_eq!(pts, expected);
     }
 
     #[test]
