@@ -1,3 +1,5 @@
+//! Main application logic and persistent user settings.
+
 use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
 use egui_extras::DatePickerButton;
@@ -154,12 +156,24 @@ fn default_plot_height() -> f32 {
     200.0
 }
 
+/// Persistent configuration for user preferences and plot visibility.
+///
+/// The values are serialized to a JSON file so choices like `show_rpe`
+/// survive across application restarts.  `show_rpe` controls the visibility
+/// of the RPE plot and is marked with `#[serde(default)]`, causing it to
+/// default to `false` when the field is absent from an older configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct Settings {
     show_weight: bool,
     show_est_1rm: bool,
     show_sets: bool,
     show_volume: bool,
+    /// Controls visibility of the RPE plot.
+    ///
+    /// This field uses `#[serde(default)]` so that missing values in the
+    /// configuration file default to `false`.
+    #[serde(default)]
+    show_rpe: bool,
     #[serde(default)]
     show_rpe_trend: bool,
     show_body_part_volume: bool,
@@ -232,6 +246,10 @@ impl Settings {
         dirs::config_dir().map(|p| p.join(Self::FILE))
     }
 
+    /// Load settings from the JSON configuration file.
+    ///
+    /// Missing fields, including `show_rpe`, default to `false` or their
+    /// respective values thanks to `#[serde(default)]` on the struct fields.
     fn load() -> Self {
         if let Some(path) = Self::path() {
             if let Ok(data) = std::fs::read_to_string(&path) {
@@ -243,6 +261,7 @@ impl Settings {
         Self::default()
     }
 
+    /// Persist the current settings, including the `show_rpe` flag, to disk.
     fn save(&self) {
         if let Some(path) = Self::path() {
             if let Some(parent) = path.parent() {
@@ -256,12 +275,16 @@ impl Settings {
 }
 
 impl Default for Settings {
+    /// Construct a `Settings` instance with default values.
+    ///
+    /// By default, the RPE plot is hidden (`show_rpe` is `false`).
     fn default() -> Self {
         Self {
             show_weight: true,
             show_est_1rm: true,
             show_sets: true,
             show_volume: false,
+            show_rpe: false,
             show_rpe_trend: false,
             show_body_part_volume: false,
             show_exercise_volume: false,
@@ -1141,10 +1164,11 @@ impl MyApp {
                     first_resp.get_or_insert(resp);
                 }
 
-                if self.settings.show_rpe_trend {
+                if self.settings.show_rpe {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
+                    let mut line_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
-                    let resp = Plot::new("rpe_trend_plot")
+                    let resp = Plot::new("rpe_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
@@ -1164,20 +1188,33 @@ impl MyApp {
                             } else {
                                 None
                             };
-                            for l in rpe_over_time_line(
+                            for (i, l) in rpe_over_time_line(
                                 filtered,
                                 self.settings.start_date,
                                 self.settings.end_date,
                                 self.settings.x_axis,
                                 ma,
                                 self.settings.smoothing_method,
-                            ) {
+                            )
+                            .into_iter()
+                            .enumerate()
+                            {
                                 if let PlotGeometry::Points(pts) = l.geometry() {
                                     for p in pts {
-                                        all_points.push([p.x, p.y]);
+                                        let arr = [p.x, p.y];
+                                        all_points.push(arr);
+                                        if i == 0 {
+                                            line_points.push(arr);
+                                        }
                                     }
                                 }
                                 plot_ui.line(l);
+                            }
+                            if self.settings.show_rpe_trend {
+                                let trend = trend_line_points(&line_points);
+                                if trend.len() == 2 {
+                                    plot_ui.line(Line::new(PlotPoints::from(trend)).name("Trend"));
+                                }
                             }
                             if let Some(ptr) = pointer {
                                 if let Some(p) = nearest_point(ptr, &all_points) {
@@ -2263,6 +2300,14 @@ impl App for MyApp {
                                         self.settings_dirty = true;
                                     }
                                     if ui
+                                        .checkbox(&mut self.settings.show_rpe, "Show RPE")
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.end_row();
+
+                                    if ui
                                         .checkbox(
                                             &mut self.settings.show_rpe_trend,
                                             "Show RPE Trend",
@@ -2271,8 +2316,6 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
-                                    ui.end_row();
-
                                     if ui
                                         .checkbox(
                                             &mut self.settings.highlight_max,
@@ -2282,6 +2325,8 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
+                                    ui.end_row();
+
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_weight_trend,
@@ -2300,6 +2345,8 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
+                                    ui.end_row();
+
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_volume_trend,
@@ -3004,6 +3051,10 @@ fn main() -> eframe::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     #[test]
     fn settings_roundtrip() {
@@ -3011,6 +3062,7 @@ mod tests {
         s.show_weight = false;
         s.show_est_1rm = false;
         s.show_sets = false;
+        s.show_rpe = true;
         s.show_rpe_trend = true;
         s.show_weight_trend = true;
         s.show_volume_trend = true;
@@ -3057,6 +3109,89 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         let loaded: Settings = serde_json::from_str(&json).unwrap();
         assert_eq!(s, loaded);
+    }
+
+    #[test]
+    fn show_rpe_persistence() {
+        use std::env;
+        use std::fs;
+
+        let _guard = ENV_MUTEX.lock().unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let prev_config = env::var_os("XDG_CONFIG_HOME");
+        unsafe {
+            env::set_var("XDG_CONFIG_HOME", dir.path());
+        }
+
+        let mut s = Settings::default();
+        s.show_rpe = true;
+        s.save();
+        let loaded = Settings::load();
+        assert!(loaded.show_rpe);
+
+        let path = Settings::path().unwrap();
+        fs::write(&path, "{}").unwrap();
+        let missing = Settings::load();
+        assert!(!missing.show_rpe);
+
+        if let Some(val) = prev_config {
+            unsafe {
+                env::set_var("XDG_CONFIG_HOME", val);
+            }
+        } else {
+            unsafe {
+                env::remove_var("XDG_CONFIG_HOME");
+            }
+        }
+    }
+
+    #[test]
+    fn show_rpe_ui_toggle_persists() {
+        use std::env;
+
+        let _guard = ENV_MUTEX.lock().unwrap();
+
+        // Use a temporary config directory so the test does not affect real files.
+        let dir = tempfile::tempdir().unwrap();
+        let prev_config = env::var_os("XDG_CONFIG_HOME");
+        unsafe {
+            env::set_var("XDG_CONFIG_HOME", dir.path());
+        }
+
+        let mut app = MyApp::default();
+        app.settings.show_rpe = false;
+
+        let ctx = egui::Context::default();
+
+        // Open the settings window; the checkbox is present but remains false.
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::Window::new("Settings").show(ctx, |ui| {
+                if ui.checkbox(&mut app.settings.show_rpe, "Show RPE").changed() {
+                    app.settings_dirty = true;
+                }
+            });
+        });
+
+        // Simulate the user toggling the checkbox.
+        app.settings.show_rpe = true;
+        app.settings_dirty = true;
+
+        assert!(app.settings.show_rpe);
+        assert!(app.settings_dirty);
+        app.settings.save();
+        let loaded = Settings::load();
+        assert!(loaded.show_rpe);
+
+        if let Some(val) = prev_config {
+            unsafe {
+                env::set_var("XDG_CONFIG_HOME", val);
+            }
+        } else {
+            unsafe {
+                env::remove_var("XDG_CONFIG_HOME");
+            }
+        }
     }
 
     #[test]
