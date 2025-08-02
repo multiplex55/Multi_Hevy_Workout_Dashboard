@@ -4,7 +4,7 @@ use egui_plot::{Bar, BarChart, Line, PlotPoints};
 use crate::body_parts::body_part_for;
 use crate::{
     WeightUnit, WorkoutEntry,
-    analysis::{WeeklySummary, aggregate_rep_counts},
+    analysis::{WeeklySummary, aggregate_rep_counts, aggregate_sets_by_body_part},
 };
 use serde::{Deserialize, Serialize};
 
@@ -338,6 +338,25 @@ pub fn sets_per_day_bar(
         .map(|(idx, (_d, count))| Bar::new(idx as f64, count as f64))
         .collect();
     BarChart::new(bars).name("Sets")
+}
+
+/// Create a bar chart showing the distribution of sets by primary body part.
+///
+/// Entries outside the optional date range are ignored. The resulting chart
+/// contains one bar per body part with the height equal to the number of sets.
+pub fn body_part_distribution(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> BarChart {
+    use std::collections::BTreeMap;
+
+    let map = aggregate_sets_by_body_part(entries, start, end);
+    let mut bars = Vec::new();
+    for (idx, (_part, count)) in BTreeMap::from_iter(map).into_iter().enumerate() {
+        bars.push(Bar::new(idx as f64, count as f64));
+    }
+    BarChart::new(bars).name("Body Parts")
 }
 
 /// Build a bar chart of weekly set counts and a line for weekly volume.
@@ -1253,6 +1272,22 @@ mod tests {
         assert!(matches!(chart.geometry(), PlotGeometry::Rects));
         let bounds = PlotItem::bounds(&chart);
         assert!((bounds.max()[1] - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_body_part_distribution_counts() {
+        use crate::analysis::aggregate_sets_by_body_part;
+        use std::collections::HashMap;
+
+        let entries = sample_entries();
+        let chart = body_part_distribution(&entries, None, None);
+        let bounds = PlotItem::bounds(&chart);
+
+        let expected =
+            HashMap::from([("Chest".to_string(), 1usize), ("Quads".to_string(), 2usize)]);
+
+        assert_eq!(aggregate_sets_by_body_part(&entries, None, None), expected);
+        assert!((bounds.max()[1] - 2.0).abs() < 1e-6);
     }
 
     #[test]
