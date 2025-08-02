@@ -21,7 +21,7 @@ use plotting::{
     OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
     body_part_distribution, body_part_volume_line, estimated_1rm_line, exercise_volume_line,
     rep_histogram, rpe_over_time_line, sets_per_day_bar, training_volume_line, trend_line_points,
-    unique_exercises, weekly_summary_plot, weight_over_time_line,
+    unique_exercises, weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -159,9 +159,11 @@ fn default_plot_height() -> f32 {
 /// Persistent configuration for user preferences and plot visibility.
 ///
 /// The values are serialized to a JSON file so choices like `show_rpe`
-/// survive across application restarts.  `show_rpe` controls the visibility
+/// survive across application restarts. `show_rpe` controls the visibility
 /// of the RPE plot and is marked with `#[serde(default)]`, causing it to
 /// default to `false` when the field is absent from an older configuration.
+/// `show_weight_reps_scatter` toggles the weight/reps scatter plot and
+/// likewise defaults to `false` thanks to `#[serde(default)]`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct Settings {
     show_weight: bool,
@@ -169,6 +171,8 @@ struct Settings {
     show_sets: bool,
     #[serde(default)]
     show_rep_histogram: bool,
+    #[serde(default)]
+    show_weight_reps_scatter: bool,
     show_volume: bool,
     /// Controls visibility of the RPE plot.
     ///
@@ -288,6 +292,7 @@ impl Default for Settings {
             show_est_1rm: true,
             show_sets: true,
             show_rep_histogram: false,
+            show_weight_reps_scatter: false,
             show_volume: false,
             show_rpe: false,
             show_rpe_trend: false,
@@ -1199,6 +1204,35 @@ impl MyApp {
                                 sel,
                                 self.settings.start_date,
                                 self.settings.end_date,
+                            ));
+                        });
+
+                    first_resp.get_or_insert(resp);
+                }
+
+                if self.settings.show_weight_reps_scatter {
+                    let unit_label = match self.settings.weight_unit {
+                        WeightUnit::Kg => "kg",
+                        WeightUnit::Lbs => "lbs",
+                    };
+                    let resp = Plot::new("weight_reps_scatter_plot")
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
+                        .x_axis_formatter(|mark, _chars, _| format!("{:.0}", mark.value))
+                        .x_axis_label(format!("Weight ({unit_label})"))
+                        .y_axis_label("Reps")
+                        .label_formatter(move |name, value| {
+                            let base = format!("{:.0} {unit_label}, {:.0} reps", value.x, value.y);
+                            if name.is_empty() { base } else { format!("{name}: {base}") }
+                        })
+                        .legend(Legend::default())
+                        .show(ui, |plot_ui| {
+                            plot_ui.points(weight_reps_scatter(
+                                filtered,
+                                sel,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                                self.settings.weight_unit,
                             ));
                         });
 
@@ -2313,6 +2347,15 @@ impl App for MyApp {
 
                                     if ui
                                         .checkbox(
+                                            &mut self.settings.show_weight_reps_scatter,
+                                            "Show Weight/Reps Scatter",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    if ui
+                                        .checkbox(
                                             &mut self.settings.show_volume,
                                             "Show Training Volume",
                                         )
@@ -2320,6 +2363,8 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
+                                    ui.end_row();
+
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_body_part_volume,
@@ -2329,8 +2374,6 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
-                                    ui.end_row();
-
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_body_part_distribution,
@@ -3123,6 +3166,7 @@ mod tests {
         s.show_weight = false;
         s.show_est_1rm = false;
         s.show_sets = false;
+        s.show_weight_reps_scatter = true;
         s.show_rpe = true;
         s.show_rpe_trend = true;
         s.show_weight_trend = true;
