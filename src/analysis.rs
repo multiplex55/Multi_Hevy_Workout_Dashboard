@@ -85,14 +85,9 @@ pub fn aggregate_exercise_stats(
                     _ => Some(e.weight),
                 };
 
-                let est = match formula {
-                    OneRmFormula::Epley => e.weight * (1.0 + e.reps as f32 / 30.0),
-                    OneRmFormula::Brzycki => {
-                        if e.reps >= 37 {
-                            continue;
-                        }
-                        e.weight * 36.0 / (37.0 - e.reps as f32)
-                    }
+                let est = match formula.estimate(e.weight as f64, e.reps) {
+                    Some(v) => v as f32,
+                    None => continue,
                 };
                 stats.best_est_1rm = match stats.best_est_1rm {
                     Some(current) if current >= est => Some(current),
@@ -180,14 +175,9 @@ pub fn personal_records(
                         }
                     })
                     .or_insert(e.weight);
-                let est = match formula {
-                    OneRmFormula::Epley => e.weight * (1.0 + e.reps as f32 / 30.0),
-                    OneRmFormula::Brzycki => {
-                        if e.reps >= 37 {
-                            continue;
-                        }
-                        e.weight * 36.0 / (37.0 - e.reps as f32)
-                    }
+                let est = match formula.estimate(e.weight as f64, e.reps) {
+                    Some(v) => v as f32,
+                    None => continue,
                 };
                 rec.best_est_1rm = match rec.best_est_1rm {
                     Some(b) if b >= est => Some(b),
@@ -520,6 +510,88 @@ mod tests {
     }
 
     #[test]
+    fn test_aggregate_exercise_stats_formulas() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Test".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Test".into(),
+                weight: 60.0,
+                reps: 20,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+
+        for formula in [
+            OneRmFormula::Lombardi,
+            OneRmFormula::Mayhew,
+            OneRmFormula::OConner,
+            OneRmFormula::Wathan,
+            OneRmFormula::Lander,
+        ] {
+            let map = aggregate_exercise_stats(&entries, formula, None, None);
+            let stats = map.get("Test").unwrap();
+            let est1 = formula.estimate(100.0, 5).unwrap();
+            let est2 = formula.estimate(60.0, 20).unwrap();
+            let expected = est1.max(est2) as f32;
+            assert!((stats.best_est_1rm.unwrap() - expected).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_aggregate_exercise_stats_invalid_input() {
+        // Brzycki: reps >= 37 invalid
+        let entries = vec![WorkoutEntry {
+            date: "2024-01-01".into(),
+            exercise: "T".into(),
+            weight: 40.0,
+            reps: 37,
+            raw: RawWorkoutRow::default(),
+        }];
+        let map = aggregate_exercise_stats(&entries, OneRmFormula::Brzycki, None, None);
+        assert!(map.get("T").unwrap().best_est_1rm.is_none());
+
+        // Lander: reps beyond ~37.9 invalid, mixed with valid 37
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "T".into(),
+                weight: 40.0,
+                reps: 37,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "T".into(),
+                weight: 40.0,
+                reps: 38,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let map = aggregate_exercise_stats(&entries, OneRmFormula::Lander, None, None);
+        let stats = map.get("T").unwrap();
+        let expected = OneRmFormula::Lander.estimate(40.0, 37).unwrap() as f32;
+        assert!((stats.best_est_1rm.unwrap() - expected).abs() < 1e-6);
+
+        // Lander: all sets invalid -> None
+        let entries = vec![WorkoutEntry {
+            date: "2024-01-01".into(),
+            exercise: "T".into(),
+            weight: 40.0,
+            reps: 38,
+            raw: RawWorkoutRow::default(),
+        }];
+        let map = aggregate_exercise_stats(&entries, OneRmFormula::Lander, None, None);
+        assert!(map.get("T").unwrap().best_est_1rm.is_none());
+    }
+
+    #[test]
     fn test_compute_stats_with_range() {
         let entries = sample_entries();
         let start = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").ok();
@@ -593,6 +665,88 @@ mod tests {
         assert!((deadlift.max_weight.unwrap() - 120.0).abs() < 1e-6);
         assert!((deadlift.max_volume.unwrap() - 600.0).abs() < 1e-6);
         assert!((deadlift.rep_prs.get(&5).unwrap() - 120.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_personal_records_formulas() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Test".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Test".into(),
+                weight: 60.0,
+                reps: 20,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+
+        for formula in [
+            OneRmFormula::Lombardi,
+            OneRmFormula::Mayhew,
+            OneRmFormula::OConner,
+            OneRmFormula::Wathan,
+            OneRmFormula::Lander,
+        ] {
+            let map = personal_records(&entries, formula, None, None);
+            let rec = map.get("Test").unwrap();
+            let est1 = formula.estimate(100.0, 5).unwrap();
+            let est2 = formula.estimate(60.0, 20).unwrap();
+            let expected = est1.max(est2) as f32;
+            assert!((rec.best_est_1rm.unwrap() - expected).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_personal_records_invalid_input() {
+        // Brzycki: reps >= 37 invalid
+        let entries = vec![WorkoutEntry {
+            date: "2024-01-01".into(),
+            exercise: "T".into(),
+            weight: 40.0,
+            reps: 37,
+            raw: RawWorkoutRow::default(),
+        }];
+        let map = personal_records(&entries, OneRmFormula::Brzycki, None, None);
+        assert!(map.get("T").unwrap().best_est_1rm.is_none());
+
+        // Lander: invalid 38 rep should be ignored in favor of valid 37
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "T".into(),
+                weight: 40.0,
+                reps: 37,
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "T".into(),
+                weight: 40.0,
+                reps: 38,
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let map = personal_records(&entries, OneRmFormula::Lander, None, None);
+        let rec = map.get("T").unwrap();
+        let expected = OneRmFormula::Lander.estimate(40.0, 37).unwrap() as f32;
+        assert!((rec.best_est_1rm.unwrap() - expected).abs() < 1e-6);
+
+        // Lander: all sets invalid -> None
+        let entries = vec![WorkoutEntry {
+            date: "2024-01-01".into(),
+            exercise: "T".into(),
+            weight: 40.0,
+            reps: 38,
+            raw: RawWorkoutRow::default(),
+        }];
+        let map = personal_records(&entries, OneRmFormula::Lander, None, None);
+        assert!(map.get("T").unwrap().best_est_1rm.is_none());
     }
 
     #[test]

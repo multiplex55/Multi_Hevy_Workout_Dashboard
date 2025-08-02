@@ -2,7 +2,10 @@ use chrono::{Datelike, NaiveDate};
 use egui_plot::{Bar, BarChart, Line, PlotPoints};
 
 use crate::body_parts::body_part_for;
-use crate::{analysis::{WeeklySummary, average_rpe_by_date}, WeightUnit, WorkoutEntry};
+use crate::{
+    WeightUnit, WorkoutEntry,
+    analysis::{WeeklySummary, average_rpe_by_date},
+};
 use serde::{Deserialize, Serialize};
 
 /// Available formulas for estimating a one-rep max.
@@ -11,7 +14,61 @@ pub enum OneRmFormula {
     /// Epley formula: `weight * (1 + reps / 30)`.
     Epley,
     /// Brzycki formula: `weight * 36 / (37 - reps)`.
+    ///
+    /// Undefined when `reps >= 37`.
     Brzycki,
+    /// Lombardi formula: `weight * reps^0.10`.
+    ///
+    /// No specific rep limit.
+    Lombardi,
+    /// Mayhew et al. formula: `100 * weight / (52.2 + 41.9 * e^(-0.055 * reps))`.
+    ///
+    /// No specific rep limit.
+    Mayhew,
+    /// O'Conner et al. formula: `weight * (1 + reps / 40)`.
+    ///
+    /// No specific rep limit.
+    OConner,
+    /// Wathan formula: `100 * weight / (48.8 + 53.8 * e^(-0.075 * reps))`.
+    ///
+    /// No specific rep limit.
+    Wathan,
+    /// Lander formula: `weight / (1.013 - 0.0267123 * reps)`.
+    ///
+    /// Undefined when `reps >= 1.013 / 0.0267123` (~37.9).
+    Lander,
+}
+
+impl OneRmFormula {
+    /// Estimate a one-rep max for the given `weight` and `reps`.
+    ///
+    /// Returns `None` if the formula is undefined for the supplied inputs
+    /// (e.g. Brzycki with reps >= 37).
+    pub fn estimate(self, weight: f64, reps: u32) -> Option<f64> {
+        let r = reps as f64;
+        match self {
+            OneRmFormula::Epley => Some(weight * (1.0 + r / 30.0)),
+            OneRmFormula::Brzycki => {
+                if reps >= 37 {
+                    None
+                } else {
+                    Some(weight * 36.0 / (37.0 - r))
+                }
+            }
+            OneRmFormula::Lombardi => Some(weight * r.powf(0.10)),
+            OneRmFormula::Mayhew => Some(100.0 * weight / (52.2 + 41.9 * (-0.055 * r).exp())),
+            OneRmFormula::OConner => Some(weight * (1.0 + r / 40.0)),
+            OneRmFormula::Wathan => Some(weight * 100.0 / (48.8 + 53.8 * (-0.075 * r).exp())),
+            OneRmFormula::Lander => {
+                let denom = 1.013 - 0.0267123 * r;
+                if denom <= 0.0 {
+                    None
+                } else {
+                    Some(weight / denom)
+                }
+            }
+        }
+    }
 }
 
 /// Options for mapping data to the x-axis.
@@ -187,14 +244,10 @@ pub fn estimated_1rm_line(
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
                 if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                     let f = unit.factor() as f64;
-                    let est = match formula {
-                        OneRmFormula::Epley => e.weight as f64 * f * (1.0 + e.reps as f64 / 30.0),
-                        OneRmFormula::Brzycki => {
-                            if e.reps >= 37 {
-                                continue;
-                            }
-                            e.weight as f64 * f * 36.0 / (37.0 - e.reps as f64)
-                        }
+                    let weight = e.weight as f64 * f;
+                    let est = match formula.estimate(weight, e.reps) {
+                        Some(v) => v,
+                        None => continue,
                     };
                     let x = match x_axis {
                         XAxis::Date => d.num_days_from_ce() as f64,
@@ -269,10 +322,7 @@ pub fn sets_per_day_bar(
 }
 
 /// Build a bar chart of weekly set counts and a line for weekly volume.
-pub fn weekly_summary_plot(
-    weeks: &[WeeklySummary],
-    unit: WeightUnit,
-) -> (BarChart, Line) {
+pub fn weekly_summary_plot(weeks: &[WeeklySummary], unit: WeightUnit) -> (BarChart, Line) {
     let bars: Vec<Bar> = weeks
         .iter()
         .enumerate()
@@ -695,21 +745,30 @@ mod tests {
                 exercise: "Squat".into(),
                 weight: 100.0,
                 reps: 5,
-                raw: RawWorkoutRow { rpe: Some(8.0), ..RawWorkoutRow::default() },
+                raw: RawWorkoutRow {
+                    rpe: Some(8.0),
+                    ..RawWorkoutRow::default()
+                },
             },
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
                 weight: 80.0,
                 reps: 5,
-                raw: RawWorkoutRow { rpe: Some(7.0), ..RawWorkoutRow::default() },
+                raw: RawWorkoutRow {
+                    rpe: Some(7.0),
+                    ..RawWorkoutRow::default()
+                },
             },
             WorkoutEntry {
                 date: "2024-01-03".into(),
                 exercise: "Squat".into(),
                 weight: 105.0,
                 reps: 5,
-                raw: RawWorkoutRow { rpe: Some(9.0), ..RawWorkoutRow::default() },
+                raw: RawWorkoutRow {
+                    rpe: Some(9.0),
+                    ..RawWorkoutRow::default()
+                },
             },
         ]
     }
@@ -1182,5 +1241,44 @@ mod tests {
         assert_eq!(line_points(lw_b.line), expected_b);
         assert_eq!(lw_b.max_point, Some(expected_b[0]));
         assert_eq!(lw_b.label.as_deref(), Some("Max 1RM"));
+    }
+
+    #[test]
+    fn test_one_rm_formula_estimate() {
+        let w = 200.0;
+        let reps = 5;
+        let lombardi = OneRmFormula::Lombardi
+            .estimate(w, reps)
+            .expect("lombardi should produce value");
+        let expected_l = w * (reps as f64).powf(0.10);
+        assert!((lombardi - expected_l).abs() < 1e-6);
+
+        let mayhew = OneRmFormula::Mayhew
+            .estimate(w, reps)
+            .expect("mayhew should produce value");
+        let expected_m = 100.0 * w / (52.2 + 41.9 * (-0.055 * reps as f64).exp());
+        assert!((mayhew - expected_m).abs() < 1e-6);
+
+        let oconner = OneRmFormula::OConner
+            .estimate(w, reps)
+            .expect("oconner should produce value");
+        let expected_o = w * (1.0 + reps as f64 / 40.0);
+        assert!((oconner - expected_o).abs() < 1e-6);
+
+        let wathan = OneRmFormula::Wathan
+            .estimate(w, reps)
+            .expect("wathan should produce value");
+        let expected_w = 100.0 * w / (48.8 + 53.8 * (-0.075 * reps as f64).exp());
+        assert!((wathan - expected_w).abs() < 1e-6);
+
+        let lander = OneRmFormula::Lander
+            .estimate(w, reps)
+            .expect("lander should produce value");
+        let expected_la = w / (1.013 - 0.0267123 * reps as f64);
+        assert!((lander - expected_la).abs() < 1e-6);
+
+        // invalid inputs
+        assert!(OneRmFormula::Brzycki.estimate(w, 37).is_none());
+        assert!(OneRmFormula::Lander.estimate(w, 38).is_none());
     }
 }
