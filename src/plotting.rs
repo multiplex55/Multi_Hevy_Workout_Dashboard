@@ -4,7 +4,7 @@ use egui_plot::{Bar, BarChart, Line, PlotPoints};
 use crate::body_parts::body_part_for;
 use crate::{
     WeightUnit, WorkoutEntry,
-    analysis::WeeklySummary,
+    analysis::{WeeklySummary, aggregate_rep_counts},
 };
 use serde::{Deserialize, Serialize};
 
@@ -291,6 +291,25 @@ pub fn estimated_1rm_line(
         }
     }
     lines
+}
+
+/// Build a histogram of rep counts for the selected exercises.
+///
+/// The x-axis represents the number of reps performed and the bar height shows
+/// how many sets used that rep count. When `exercises` is empty all entries are
+/// considered. Entries outside the optional date range are skipped.
+pub fn rep_histogram(
+    entries: &[WorkoutEntry],
+    exercises: &[String],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> BarChart {
+    let map = aggregate_rep_counts(entries, exercises, start, end);
+    let bars: Vec<Bar> = map
+        .into_iter()
+        .map(|(reps, count)| Bar::new(reps as f64, count as f64))
+        .collect();
+    BarChart::new(bars).name("Reps")
 }
 
 /// Create a bar chart of how many sets were performed on each day.
@@ -1224,6 +1243,16 @@ mod tests {
         let start = NaiveDate::parse_from_str("2024-01-02", "%Y-%m-%d").ok();
         let ex = unique_exercises(&sample_entries(), start, None);
         assert_eq!(ex, vec!["Squat".to_string()]);
+    }
+
+    #[test]
+    fn test_rep_histogram_bounds() {
+        let entries = sample_entries();
+        let ex = vec!["Squat".to_string(), "Bench".to_string()];
+        let chart = rep_histogram(&entries, &ex, None, None);
+        assert!(matches!(chart.geometry(), PlotGeometry::Rects));
+        let bounds = PlotItem::bounds(&chart);
+        assert!((bounds.max()[1] - 3.0).abs() < 1e-6);
     }
 
     #[test]

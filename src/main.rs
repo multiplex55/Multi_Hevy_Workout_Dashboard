@@ -19,9 +19,9 @@ use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
     OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
-    body_part_volume_line, estimated_1rm_line, exercise_volume_line, rpe_over_time_line,
-    sets_per_day_bar, training_volume_line, trend_line_points, unique_exercises,
-    weekly_summary_plot, weight_over_time_line,
+    body_part_volume_line, estimated_1rm_line, exercise_volume_line, rep_histogram,
+    rpe_over_time_line, sets_per_day_bar, training_volume_line, trend_line_points,
+    unique_exercises, weekly_summary_plot, weight_over_time_line,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -167,6 +167,8 @@ struct Settings {
     show_weight: bool,
     show_est_1rm: bool,
     show_sets: bool,
+    #[serde(default)]
+    show_rep_histogram: bool,
     show_volume: bool,
     /// Controls visibility of the RPE plot.
     ///
@@ -283,6 +285,7 @@ impl Default for Settings {
             show_weight: true,
             show_est_1rm: true,
             show_sets: true,
+            show_rep_histogram: false,
             show_volume: false,
             show_rpe: false,
             show_rpe_trend: false,
@@ -1156,6 +1159,24 @@ impl MyApp {
                             plot_ui.bar_chart(sets_per_day_bar(
                                 filtered,
                                 ex_for_sets,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            ));
+                        });
+
+                    first_resp.get_or_insert(resp);
+                }
+
+                if self.settings.show_rep_histogram {
+                    let resp = Plot::new("rep_hist_plot")
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
+                        .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
+                        .legend(Legend::default())
+                        .show(ui, |plot_ui| {
+                            plot_ui.bar_chart(rep_histogram(
+                                filtered,
+                                sel,
                                 self.settings.start_date,
                                 self.settings.end_date,
                             ));
@@ -2261,8 +2282,8 @@ impl App for MyApp {
                                     }
                                     if ui
                                         .checkbox(
-                                            &mut self.settings.show_volume,
-                                            "Show Training Volume",
+                                            &mut self.settings.show_rep_histogram,
+                                            "Show Rep Histogram",
                                         )
                                         .changed()
                                     {
@@ -2270,6 +2291,15 @@ impl App for MyApp {
                                     }
                                     ui.end_row();
 
+                                    if ui
+                                        .checkbox(
+                                            &mut self.settings.show_volume,
+                                            "Show Training Volume",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_body_part_volume,
@@ -2279,6 +2309,8 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
+                                    ui.end_row();
+
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_exercise_volume,
@@ -2288,8 +2320,6 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
-                                    ui.end_row();
-
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_weekly_summary,
@@ -2299,14 +2329,14 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
+                                    ui.end_row();
+
                                     if ui
                                         .checkbox(&mut self.settings.show_rpe, "Show RPE")
                                         .changed()
                                     {
                                         self.settings_dirty = true;
                                     }
-                                    ui.end_row();
-
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_rpe_trend,
@@ -2316,6 +2346,8 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
+                                    ui.end_row();
+
                                     if ui
                                         .checkbox(
                                             &mut self.settings.highlight_max,
@@ -2325,8 +2357,6 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
-                                    ui.end_row();
-
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_weight_trend,
@@ -2336,6 +2366,8 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
+                                    ui.end_row();
+
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_smoothed,
@@ -2345,8 +2377,6 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
-                                    ui.end_row();
-
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_volume_trend,
@@ -3167,7 +3197,10 @@ mod tests {
         // Open the settings window; the checkbox is present but remains false.
         let _ = ctx.run(Default::default(), |ctx| {
             egui::Window::new("Settings").show(ctx, |ui| {
-                if ui.checkbox(&mut app.settings.show_rpe, "Show RPE").changed() {
+                if ui
+                    .checkbox(&mut app.settings.show_rpe, "Show RPE")
+                    .changed()
+                {
                     app.settings_dirty = true;
                 }
             });

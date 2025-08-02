@@ -4,7 +4,7 @@ use crate::body_parts::body_part_for;
 use crate::plotting::OneRmFormula;
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Summary statistics about a workout log.
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -136,6 +136,31 @@ pub fn aggregate_sets_by_body_part(
         if let (Some(bp), Some(d)) = (body_part_for(&e.exercise), parse_date(&e.date)) {
             if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                 *map.entry(bp).or_insert(0) += 1;
+            }
+        }
+    }
+    map
+}
+
+/// Aggregate rep counts across the selected exercises.
+///
+/// Returns a sorted map where the key is the rep count and the value is the
+/// number of sets performed with that rep count. Only entries within the
+/// optional date range are included. If `exercises` is empty all entries are
+/// considered.
+pub fn aggregate_rep_counts(
+    entries: &[WorkoutEntry],
+    exercises: &[String],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> BTreeMap<u32, usize> {
+    let mut map: BTreeMap<u32, usize> = BTreeMap::new();
+    for e in entries {
+        if exercises.is_empty() || exercises.iter().any(|ex| ex == &e.exercise) {
+            if let Some(d) = parse_date(&e.date) {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                    *map.entry(e.reps).or_insert(0) += 1;
+                }
             }
         }
     }
@@ -616,6 +641,17 @@ mod tests {
         assert_eq!(map.get("Quads"), Some(&1));
         assert_eq!(map.get("Back"), Some(&1));
         assert!(map.get("Chest").is_none());
+    }
+
+    #[test]
+    fn test_aggregate_rep_counts() {
+        let entries = sample_entries();
+        let ex = vec!["Squat".to_string(), "Bench".to_string()];
+        let map = aggregate_rep_counts(&entries, &ex, None, None);
+        assert_eq!(map.get(&5), Some(&3));
+
+        let all = aggregate_rep_counts(&entries, &[], None, None);
+        assert_eq!(all.get(&5), Some(&4));
     }
 
     #[test]
