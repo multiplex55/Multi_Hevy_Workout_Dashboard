@@ -1,5 +1,5 @@
 use chrono::{Datelike, NaiveDate};
-use egui_plot::{Bar, BarChart, Line, PlotPoints};
+use egui_plot::{Bar, BarChart, Line, PlotPoints, Points};
 
 use crate::body_parts::body_part_for;
 use crate::{
@@ -357,6 +357,33 @@ pub fn body_part_distribution(
         bars.push(Bar::new(idx as f64, count as f64));
     }
     BarChart::new(bars).name("Body Parts")
+}
+
+/// Generate scatter points of weight versus repetitions for the selected
+/// `exercises`.
+///
+/// All matching entries within the optional date range are included. Weights
+/// are converted using `unit` and plotted on the x-axis with reps on the
+/// y-axis.
+pub fn weight_reps_scatter(
+    entries: &[WorkoutEntry],
+    exercises: &[String],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+    unit: WeightUnit,
+) -> Points {
+    let mut pts = Vec::new();
+    let f = unit.factor() as f64;
+    for e in entries {
+        if exercises.is_empty() || exercises.contains(&e.exercise) {
+            if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                    pts.push([e.weight as f64 * f, e.reps as f64]);
+                }
+            }
+        }
+    }
+    Points::new(pts).name("Weight vs Reps")
 }
 
 /// Build a bar chart of weekly set counts and a line for weekly volume.
