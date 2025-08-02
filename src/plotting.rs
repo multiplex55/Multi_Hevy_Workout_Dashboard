@@ -4,7 +4,7 @@ use egui_plot::{Bar, BarChart, Line, PlotPoints};
 use crate::body_parts::body_part_for;
 use crate::{
     WeightUnit, WorkoutEntry,
-    analysis::{WeeklySummary, average_rpe_by_date},
+    analysis::WeeklySummary,
 };
 use serde::{Deserialize, Serialize};
 
@@ -582,19 +582,29 @@ pub fn rpe_over_time_line(
     ma_window: Option<usize>,
     method: SmoothingMethod,
 ) -> Vec<Line> {
-    let data = average_rpe_by_date(entries, start, end);
-    let mut points = Vec::new();
-    let mut idx = 0usize;
-    for (d, rpe) in data {
-        let x = match x_axis {
-            XAxis::Date => d.num_days_from_ce() as f64,
-            XAxis::WorkoutIndex => {
-                let v = idx as f64;
-                idx += 1;
-                v
+    use std::collections::BTreeMap;
+    let mut map: BTreeMap<NaiveDate, (f32, usize)> = BTreeMap::new();
+    for e in entries {
+        if let (Some(rpe), Ok(d)) = (e.raw.rpe, NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")) {
+            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                let entry = map.entry(d).or_insert((0.0, 0));
+                entry.0 += rpe;
+                entry.1 += 1;
             }
-        };
-        points.push([x, rpe as f64]);
+        }
+    }
+    let mut points = Vec::new();
+    match x_axis {
+        XAxis::Date => {
+            for (d, (sum, count)) in map {
+                points.push([d.num_days_from_ce() as f64, (sum / count as f32) as f64]);
+            }
+        }
+        XAxis::WorkoutIndex => {
+            for (i, (_d, (sum, count))) in map.into_iter().enumerate() {
+                points.push([i as f64, (sum / count as f32) as f64]);
+            }
+        }
     }
     let mut lines = Vec::new();
     lines.push(Line::new(PlotPoints::from(points.clone())).name("Avg RPE"));
@@ -924,6 +934,23 @@ mod tests {
             [d1.num_days_from_ce() as f64, 7.5],
             [d3.num_days_from_ce() as f64, 9.0],
         ];
+        assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_rpe_over_time_line_index() {
+        let line = rpe_over_time_line(
+            &sample_entries(),
+            None,
+            None,
+            XAxis::WorkoutIndex,
+            None,
+            SmoothingMethod::SimpleMA,
+        )
+        .into_iter()
+        .next()
+        .unwrap();
+        let expected = vec![[0.0, 7.5], [1.0, 9.0]];
         assert_eq!(line_points(line), expected);
     }
 
