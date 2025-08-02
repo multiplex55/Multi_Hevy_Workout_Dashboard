@@ -2438,6 +2438,7 @@ impl App for MyApp {
             let prev_start = self.settings.start_date;
             let prev_end = self.settings.end_date;
             egui::Window::new("Settings")
+                .default_width(400.0)
                 .open(&mut self.show_settings)
                 .show(ctx, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
