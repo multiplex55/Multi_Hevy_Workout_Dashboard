@@ -9,7 +9,8 @@ use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs::File;
-use std::io::Cursor;
+use std::io::{BufReader, Cursor, Read};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use chrono::{Local, NaiveDate};
@@ -20,11 +21,11 @@ mod analysis;
 use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
-    OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
-    body_part_distribution, body_part_volume_line, body_part_volume_trend, estimated_1rm_line,
-    exercise_volume_line, histogram, HistogramMetric, rpe_over_time_line, sets_per_day_bar,
-    training_volume_line, trend_line_points, unique_exercises, weekly_summary_plot,
-    weight_over_time_line, weight_reps_scatter,
+    HistogramMetric, OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis,
+    aggregated_volume_points, body_part_distribution, body_part_volume_line,
+    body_part_volume_trend, estimated_1rm_line, exercise_volume_line, histogram,
+    rpe_over_time_line, sets_per_day_bar, training_volume_line, trend_line_points,
+    unique_exercises, weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -95,10 +96,23 @@ impl WeightUnit {
     }
 }
 
-fn parse_workout_csv<R: std::io::Read>(reader: R) -> Result<Vec<WorkoutEntry>, csv::Error> {
-    let mut rdr = csv::Reader::from_reader(reader);
+enum LoadMessage {
+    Progress(f32),
+    Done(Vec<WorkoutEntry>),
+    Error(String),
+}
+
+fn parse_workout_csv<R: std::io::Read>(
+    reader: R,
+    progress: Option<mpsc::Sender<LoadMessage>>,
+) -> Result<Vec<WorkoutEntry>, csv::Error> {
+    let mut buf = String::new();
+    let mut rdr = BufReader::new(reader);
+    rdr.read_to_string(&mut buf).map_err(csv::Error::from)?;
+    let total_lines = buf.lines().count().max(1);
+    let mut rdr = csv::Reader::from_reader(Cursor::new(buf));
     let mut entries = Vec::new();
-    for result in rdr.deserialize::<RawWorkoutRow>() {
+    for (i, result) in rdr.deserialize::<RawWorkoutRow>().enumerate() {
         if let Ok(raw) = result {
             if let Ok(dt) =
                 chrono::NaiveDateTime::parse_from_str(&raw.start_time, "%d %b %Y, %H:%M")
@@ -118,6 +132,13 @@ fn parse_workout_csv<R: std::io::Read>(reader: R) -> Result<Vec<WorkoutEntry>, c
                 });
             }
         }
+        if let Some(tx) = &progress {
+            let _ = tx.send(LoadMessage::Progress((i + 1) as f32 / total_lines as f32));
+        }
+    }
+    if let Some(tx) = progress {
+        let _ = tx.send(LoadMessage::Progress(1.0));
+        let _ = tx.send(LoadMessage::Done(entries.clone()));
     }
     Ok(entries)
 }
@@ -425,6 +446,11 @@ struct MyApp {
     mapping_entry: exercise_mapping::MuscleMapping,
     pr_toast_start: Option<Instant>,
     pr_message: Option<String>,
+    loading: bool,
+    loading_progress: f32,
+    load_rx: Option<mpsc::Receiver<LoadMessage>>,
+    pending_filename: Option<String>,
+    pending_path: Option<String>,
 }
 
 impl Default for MyApp {
@@ -466,6 +492,11 @@ impl Default for MyApp {
             mapping_entry: exercise_mapping::MuscleMapping::default(),
             pr_toast_start: None,
             pr_message: None,
+            loading: false,
+            loading_progress: 0.0,
+            load_rx: None,
+            pending_filename: None,
+            pending_path: None,
         };
 
         app.selected_exercises = app.settings.selected_exercises.clone();
@@ -480,7 +511,7 @@ impl Default for MyApp {
                 let p = std::path::Path::new(&path);
                 if p.exists() {
                     if let Ok(file) = File::open(p) {
-                        if let Ok(entries) = parse_workout_csv(file) {
+                        if let Ok(entries) = parse_workout_csv(file, None) {
                             app.workouts = entries;
                             app.stats = compute_stats(
                                 &app.workouts,
@@ -564,6 +595,26 @@ impl MyApp {
                 *sort_ascending = true;
             }
         }
+    }
+
+    fn start_loading<R: Read + Send + 'static>(
+        &mut self,
+        reader: R,
+        filename: String,
+        path: Option<String>,
+    ) {
+        let (tx, rx) = mpsc::channel();
+        self.loading = true;
+        self.loading_progress = 0.0;
+        self.load_rx = Some(rx);
+        self.pending_filename = Some(filename);
+        self.pending_path = path;
+        std::thread::spawn(move || {
+            let sender = tx;
+            if let Err(e) = parse_workout_csv(reader, Some(sender.clone())) {
+                let _ = sender.send(LoadMessage::Error(e.to_string()));
+            }
+        });
     }
 
     fn sort_summary_stats(
@@ -1453,6 +1504,55 @@ impl App for MyApp {
             }
         }
 
+        if let Some(mut rx) = self.load_rx.take() {
+            while let Ok(msg) = rx.try_recv() {
+                match msg {
+                    LoadMessage::Progress(p) => {
+                        self.loading_progress = p;
+                    }
+                    LoadMessage::Done(entries) => {
+                        self.workouts = entries;
+                        self.stats = compute_stats(
+                            &self.workouts,
+                            self.settings.start_date,
+                            self.settings.end_date,
+                        );
+                        self.update_filter_values();
+                        self.last_loaded = self.pending_filename.take();
+                        if let Some(name) = &self.last_loaded {
+                            info!("Loaded {} entries from {}", self.workouts.len(), name);
+                        }
+                        if let Some(p) = self.pending_path.take() {
+                            self.settings.last_file = Some(p);
+                            self.settings_dirty = true;
+                        }
+                        self.toast_start = Some(Instant::now());
+                        self.loading = false;
+                    }
+                    LoadMessage::Error(e) => {
+                        log::error!("Failed to load CSV: {e}");
+                        self.loading = false;
+                        self.workouts.clear();
+                    }
+                }
+            }
+            if self.loading {
+                self.load_rx = Some(rx);
+                ctx.request_repaint();
+            }
+        }
+
+        if self.loading {
+            egui::Window::new("Loading CSV")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label("Parsing CSV...");
+                    ui.add(egui::ProgressBar::new(self.loading_progress).show_percentage());
+                });
+        }
+
         // Handle CSV drag-and-drop
         for file in ctx.input(|i| i.raw.dropped_files.clone()) {
             let ext_ok = file
@@ -1468,45 +1568,16 @@ impl App for MyApp {
 
             if let Some(path) = file.path.clone() {
                 if let Ok(f) = File::open(&path) {
-                    if let Ok(entries) = parse_workout_csv(f) {
-                        self.workouts = entries;
-                    } else {
-                        self.workouts.clear();
-                    }
                     let filename = path
                         .file_name()
                         .map(|f| f.to_string_lossy().to_string())
                         .unwrap_or_else(|| path.display().to_string());
-                    info!("Loaded {} entries from {}", self.workouts.len(), filename);
-                    self.stats = compute_stats(
-                        &self.workouts,
-                        self.settings.start_date,
-                        self.settings.end_date,
-                    );
-                    self.update_filter_values();
-                    self.last_loaded = Some(filename);
-                    self.toast_start = Some(Instant::now());
-                    self.settings.last_file = Some(path.display().to_string());
-                    self.settings_dirty = true;
+                    self.start_loading(f, filename, Some(path.display().to_string()));
                 }
             } else if let Some(bytes) = file.bytes {
                 let name = file.name.clone();
                 let reader = Cursor::new(bytes.to_vec());
-                if let Ok(entries) = parse_workout_csv(reader) {
-                    self.workouts = entries;
-                } else {
-                    self.workouts.clear();
-                }
-                info!("Loaded {} entries from {}", self.workouts.len(), name);
-                self.stats = compute_stats(
-                    &self.workouts,
-                    self.settings.start_date,
-                    self.settings.end_date,
-                );
-                self.update_filter_values();
-                self.last_loaded = Some(name);
-                self.toast_start = Some(Instant::now());
-                self.settings_dirty = true;
+                self.start_loading(reader, name, None);
             }
         }
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
@@ -1629,22 +1700,11 @@ impl App for MyApp {
                             .map(|f| f.to_string_lossy().to_string())
                             .unwrap_or_else(|| path.display().to_string());
                         if let Ok(file) = File::open(&path) {
-                            if let Ok(entries) = parse_workout_csv(file) {
-                                self.workouts = entries;
-                            } else {
-                                self.workouts.clear();
-                            }
-                            info!("Loaded {} entries from {}", self.workouts.len(), filename);
-                            self.stats = compute_stats(
-                                &self.workouts,
-                                self.settings.start_date,
-                                self.settings.end_date,
+                            self.start_loading(
+                                file,
+                                filename.clone(),
+                                Some(path.display().to_string()),
                             );
-                            self.update_filter_values();
-                            self.last_loaded = Some(filename);
-                            self.toast_start = Some(Instant::now());
-                            self.settings.last_file = Some(path.display().to_string());
-                            self.settings_dirty = true;
                         }
                     }
                 }
@@ -2672,102 +2732,91 @@ impl App for MyApp {
                         egui::CollapsingHeader::new("Distributions")
                             .default_open(true)
                             .show(ui, |ui| {
-                                egui::Grid::new("hist_grid")
-                                    .num_columns(2)
-                                    .show(ui, |ui| {
-                                        if ui
-                                            .checkbox(
-                                                &mut self.settings.show_rep_histogram,
-                                                "Show Rep Histogram",
-                                            )
-                                            .changed()
-                                        {
-                                            self.settings_dirty = true;
-                                        }
-                                        ui.horizontal(|ui| {
-                                            ui.label("Rep bin:");
-                                            let mut b =
-                                                format!("{:.0}", self.settings.rep_bin_size);
-                                            if ui.text_edit_singleline(&mut b).changed() {
-                                                if let Ok(v) = b.parse::<f32>() {
-                                                    self.settings.rep_bin_size = v.max(1.0);
-                                                    self.settings_dirty = true;
-                                                }
-                                            }
-                                        });
-                                        ui.end_row();
-
-                                        if ui
-                                            .checkbox(
-                                                &mut self.settings.show_weight_histogram,
-                                                "Show Weight Histogram",
-                                            )
-                                            .changed()
-                                        {
-                                            self.settings_dirty = true;
-                                        }
-                                        ui.horizontal(|ui| {
-                                            ui.label("Weight bin:");
-                                            let mut b =
-                                                format!("{:.0}", self.settings.weight_bin_size);
-                                            if ui.text_edit_singleline(&mut b).changed() {
-                                                if let Ok(v) = b.parse::<f32>() {
-                                                    self.settings.weight_bin_size =
-                                                        v.max(1.0);
-                                                    self.settings_dirty = true;
-                                                }
-                                            }
-                                        });
-                                        ui.end_row();
-
-                                        if ui
-                                            .checkbox(
-                                                &mut self.settings.show_volume_histogram,
-                                                "Show Volume Histogram",
-                                            )
-                                            .changed()
-                                        {
-                                            self.settings_dirty = true;
-                                        }
-                                        ui.horizontal(|ui| {
-                                            ui.label("Volume bin:");
-                                            let mut b = format!(
-                                                "{:.0}",
-                                                self.settings.volume_bin_size
-                                            );
+                                egui::Grid::new("hist_grid").num_columns(2).show(ui, |ui| {
+                                    if ui
+                                        .checkbox(
+                                            &mut self.settings.show_rep_histogram,
+                                            "Show Rep Histogram",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.horizontal(|ui| {
+                                        ui.label("Rep bin:");
+                                        let mut b = format!("{:.0}", self.settings.rep_bin_size);
                                         if ui.text_edit_singleline(&mut b).changed() {
-                                                if let Ok(v) = b.parse::<f32>() {
-                                                    self.settings.volume_bin_size =
-                                                        v.max(1.0);
-                                                    self.settings_dirty = true;
-                                                }
+                                            if let Ok(v) = b.parse::<f32>() {
+                                                self.settings.rep_bin_size = v.max(1.0);
+                                                self.settings_dirty = true;
                                             }
-                                        });
-                                        ui.end_row();
-
-                                        if ui
-                                            .checkbox(
-                                                &mut self.settings.show_rpe_histogram,
-                                                "Show RPE Histogram",
-                                            )
-                                            .changed()
-                                        {
-                                            self.settings_dirty = true;
                                         }
-                                        ui.horizontal(|ui| {
-                                            ui.label("RPE bin:");
-                                            let mut b =
-                                                format!("{:.1}", self.settings.rpe_bin_size);
-                                            if ui.text_edit_singleline(&mut b).changed() {
-                                                if let Ok(v) = b.parse::<f32>() {
-                                                    self.settings.rpe_bin_size =
-                                                        v.max(0.1);
-                                                    self.settings_dirty = true;
-                                                }
-                                            }
-                                        });
-                                        ui.end_row();
                                     });
+                                    ui.end_row();
+
+                                    if ui
+                                        .checkbox(
+                                            &mut self.settings.show_weight_histogram,
+                                            "Show Weight Histogram",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.horizontal(|ui| {
+                                        ui.label("Weight bin:");
+                                        let mut b = format!("{:.0}", self.settings.weight_bin_size);
+                                        if ui.text_edit_singleline(&mut b).changed() {
+                                            if let Ok(v) = b.parse::<f32>() {
+                                                self.settings.weight_bin_size = v.max(1.0);
+                                                self.settings_dirty = true;
+                                            }
+                                        }
+                                    });
+                                    ui.end_row();
+
+                                    if ui
+                                        .checkbox(
+                                            &mut self.settings.show_volume_histogram,
+                                            "Show Volume Histogram",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.horizontal(|ui| {
+                                        ui.label("Volume bin:");
+                                        let mut b = format!("{:.0}", self.settings.volume_bin_size);
+                                        if ui.text_edit_singleline(&mut b).changed() {
+                                            if let Ok(v) = b.parse::<f32>() {
+                                                self.settings.volume_bin_size = v.max(1.0);
+                                                self.settings_dirty = true;
+                                            }
+                                        }
+                                    });
+                                    ui.end_row();
+
+                                    if ui
+                                        .checkbox(
+                                            &mut self.settings.show_rpe_histogram,
+                                            "Show RPE Histogram",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.horizontal(|ui| {
+                                        ui.label("RPE bin:");
+                                        let mut b = format!("{:.1}", self.settings.rpe_bin_size);
+                                        if ui.text_edit_singleline(&mut b).changed() {
+                                            if let Ok(v) = b.parse::<f32>() {
+                                                self.settings.rpe_bin_size = v.max(0.1);
+                                                self.settings_dirty = true;
+                                            }
+                                        }
+                                    });
+                                    ui.end_row();
+                                });
                             });
 
                         ui.separator();
@@ -3566,7 +3615,7 @@ mod tests {
     fn parse_workout_csv_basic() {
         let data = "title,start_time,end_time,description,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_lbs,reps,distance_miles,duration_seconds,rpe\n\
 Week 12 - Lower - Strength,\"26 Jul 2025, 07:06\",\"26 Jul 2025, 08:11\",desc,\"Lying Leg Curl (Machine)\",,,0,warmup,100,10,,,\n";
-        let entries = parse_workout_csv(data.as_bytes()).unwrap();
+        let entries = parse_workout_csv(data.as_bytes(), None).unwrap();
         assert_eq!(entries.len(), 1);
         let e = &entries[0];
         assert_eq!(e.date, "2025-07-26");
@@ -3582,7 +3631,7 @@ Week 12 - Lower - Strength,\"26 Jul 2025, 07:06\",\"26 Jul 2025, 08:11\",desc,\"
     fn parse_workout_csv_weight_kg() {
         let data = "title,start_time,end_time,description,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_kg,reps,distance_miles,duration_seconds,rpe\n\
 Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
-        let entries = parse_workout_csv(data.as_bytes()).unwrap();
+        let entries = parse_workout_csv(data.as_bytes(), None).unwrap();
         assert_eq!(entries.len(), 1);
         let e = &entries[0];
         assert_eq!(e.date, "2025-07-27");
