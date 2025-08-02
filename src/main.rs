@@ -19,8 +19,8 @@ use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
     OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
-    body_part_volume_line, estimated_1rm_line, exercise_volume_line, rep_histogram,
-    rpe_over_time_line, sets_per_day_bar, training_volume_line, trend_line_points,
+    body_part_distribution, body_part_volume_line, estimated_1rm_line, exercise_volume_line,
+    rep_histogram, rpe_over_time_line, sets_per_day_bar, training_volume_line, trend_line_points,
     unique_exercises, weekly_summary_plot, weight_over_time_line,
 };
 mod capture;
@@ -180,6 +180,8 @@ struct Settings {
     show_rpe_trend: bool,
     show_body_part_volume: bool,
     #[serde(default)]
+    show_body_part_distribution: bool,
+    #[serde(default)]
     show_exercise_volume: bool,
     #[serde(default)]
     show_weekly_summary: bool,
@@ -290,6 +292,7 @@ impl Default for Settings {
             show_rpe: false,
             show_rpe_trend: false,
             show_body_part_volume: false,
+            show_body_part_distribution: false,
             show_exercise_volume: false,
             show_weekly_summary: false,
             show_exercise_stats: false,
@@ -1139,6 +1142,23 @@ impl MyApp {
                             ) {
                                 plot_ui.line(l);
                             }
+                        });
+
+                    first_resp.get_or_insert(resp);
+                }
+
+                if self.settings.show_body_part_distribution {
+                    let resp = Plot::new("body_part_distribution_plot")
+                        .width(self.settings.plot_width)
+                        .height(self.settings.plot_height)
+                        .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
+                        .legend(Legend::default())
+                        .show(ui, |plot_ui| {
+                            plot_ui.bar_chart(body_part_distribution(
+                                filtered,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            ));
                         });
 
                     first_resp.get_or_insert(resp);
@@ -2313,6 +2333,17 @@ impl App for MyApp {
 
                                     if ui
                                         .checkbox(
+                                            &mut self.settings.show_body_part_distribution,
+                                            "Show Body Part Distribution",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.end_row();
+
+                                    if ui
+                                        .checkbox(
                                             &mut self.settings.show_exercise_volume,
                                             "Show Exercise Volume",
                                         )
@@ -3118,6 +3149,7 @@ mod tests {
         s.notes_filter = Some("tempo".into());
         s.exclude_warmups = true;
         s.show_body_part_volume = true;
+        s.show_body_part_distribution = true;
         s.show_exercise_volume = true;
         s.show_weekly_summary = true;
         s.show_exercise_stats = true;
