@@ -22,7 +22,7 @@ mod plotting;
 use plotting::{
     OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis, aggregated_volume_points,
     body_part_distribution, body_part_volume_line, body_part_volume_trend, estimated_1rm_line,
-    exercise_volume_line, rep_histogram, rpe_over_time_line, sets_per_day_bar,
+    exercise_volume_line, histogram, HistogramMetric, rpe_over_time_line, sets_per_day_bar,
     training_volume_line, trend_line_points, unique_exercises, weekly_summary_plot,
     weight_over_time_line, weight_reps_scatter,
 };
@@ -175,6 +175,20 @@ struct Settings {
     #[serde(default)]
     show_rep_histogram: bool,
     #[serde(default)]
+    rep_bin_size: f32,
+    #[serde(default)]
+    show_weight_histogram: bool,
+    #[serde(default)]
+    weight_bin_size: f32,
+    #[serde(default)]
+    show_volume_histogram: bool,
+    #[serde(default)]
+    volume_bin_size: f32,
+    #[serde(default)]
+    show_rpe_histogram: bool,
+    #[serde(default)]
+    rpe_bin_size: f32,
+    #[serde(default)]
     show_weight_reps_scatter: bool,
     show_volume: bool,
     /// Controls visibility of the RPE plot.
@@ -297,6 +311,13 @@ impl Default for Settings {
             show_est_1rm: true,
             show_sets: true,
             show_rep_histogram: false,
+            rep_bin_size: 1.0,
+            show_weight_histogram: false,
+            weight_bin_size: 10.0,
+            show_volume_histogram: false,
+            volume_bin_size: 100.0,
+            show_rpe_histogram: false,
+            rpe_bin_size: 1.0,
             show_weight_reps_scatter: false,
             show_volume: false,
             show_rpe: false,
@@ -387,6 +408,7 @@ struct MyApp {
     show_entries: bool,
     show_plot_window: bool,
     show_compare_window: bool,
+    show_distributions: bool,
     show_exercise_stats: bool,
     show_personal_records: bool,
     show_exercise_panel: bool,
@@ -427,6 +449,7 @@ impl Default for MyApp {
             show_entries: false,
             show_plot_window: false,
             show_compare_window: false,
+            show_distributions: false,
             show_exercise_stats,
             show_personal_records,
             show_exercise_panel,
@@ -1209,24 +1232,6 @@ impl MyApp {
                     first_resp.get_or_insert(resp);
                 }
 
-                if self.settings.show_rep_histogram {
-                    let resp = Plot::new("rep_hist_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
-                        .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
-                        .legend(Legend::default())
-                        .show(ui, |plot_ui| {
-                            plot_ui.bar_chart(rep_histogram(
-                                filtered,
-                                sel,
-                                self.settings.start_date,
-                                self.settings.end_date,
-                            ));
-                        });
-
-                    first_resp.get_or_insert(resp);
-                }
-
                 if self.settings.show_weight_reps_scatter {
                     let unit_label = match self.settings.weight_unit {
                         WeightUnit::Kg => "kg",
@@ -1603,6 +1608,12 @@ impl App for MyApp {
                                 }
                             }
                         }
+                        ui.close_menu();
+                    }
+                });
+                ui.menu_button("Distributions", |ui| {
+                    if ui.button("Histograms").clicked() {
+                        self.show_distributions = true;
                         ui.close_menu();
                     }
                 });
@@ -2102,6 +2113,98 @@ impl App for MyApp {
             self.show_compare_window = open;
         }
 
+        if self.show_distributions {
+            let entries = self.filtered_selected_entries();
+            let mut open = self.show_distributions;
+            egui::Window::new("Distributions")
+                .open(&mut open)
+                .vscroll(true)
+                .show(ctx, |ui| {
+                    if entries.is_empty() {
+                        ui.label("No entries");
+                    } else {
+                        if self.settings.show_rep_histogram {
+                            Plot::new("rep_hist_window")
+                                .width(self.settings.plot_width)
+                                .height(self.settings.plot_height)
+                                .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
+                                .legend(Legend::default())
+                                .show(ui, |plot_ui| {
+                                    plot_ui.bar_chart(histogram(
+                                        &entries,
+                                        HistogramMetric::Reps {
+                                            bin: self.settings.rep_bin_size as f64,
+                                        },
+                                        self.settings.start_date,
+                                        self.settings.end_date,
+                                        self.settings.weight_unit,
+                                    ));
+                                });
+                        }
+                        if self.settings.show_weight_histogram {
+                            let unit_label = match self.settings.weight_unit {
+                                WeightUnit::Kg => "kg",
+                                WeightUnit::Lbs => "lbs",
+                            };
+                            Plot::new("weight_hist_window")
+                                .width(self.settings.plot_width)
+                                .height(self.settings.plot_height)
+                                .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
+                                .x_axis_label(format!("Weight ({unit_label})"))
+                                .legend(Legend::default())
+                                .show(ui, |plot_ui| {
+                                    plot_ui.bar_chart(histogram(
+                                        &entries,
+                                        HistogramMetric::Weight {
+                                            bin: self.settings.weight_bin_size as f64,
+                                        },
+                                        self.settings.start_date,
+                                        self.settings.end_date,
+                                        self.settings.weight_unit,
+                                    ));
+                                });
+                        }
+                        if self.settings.show_volume_histogram {
+                            Plot::new("volume_hist_window")
+                                .width(self.settings.plot_width)
+                                .height(self.settings.plot_height)
+                                .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
+                                .legend(Legend::default())
+                                .show(ui, |plot_ui| {
+                                    plot_ui.bar_chart(histogram(
+                                        &entries,
+                                        HistogramMetric::Volume {
+                                            bin: self.settings.volume_bin_size as f64,
+                                        },
+                                        self.settings.start_date,
+                                        self.settings.end_date,
+                                        self.settings.weight_unit,
+                                    ));
+                                });
+                        }
+                        if self.settings.show_rpe_histogram {
+                            Plot::new("rpe_hist_window")
+                                .width(self.settings.plot_width)
+                                .height(self.settings.plot_height)
+                                .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
+                                .legend(Legend::default())
+                                .show(ui, |plot_ui| {
+                                    plot_ui.bar_chart(histogram(
+                                        &entries,
+                                        HistogramMetric::Rpe {
+                                            bin: self.settings.rpe_bin_size as f64,
+                                        },
+                                        self.settings.start_date,
+                                        self.settings.end_date,
+                                        self.settings.weight_unit,
+                                    ));
+                                });
+                        }
+                    }
+                });
+            self.show_distributions = open;
+        }
+
         if self.show_exercise_stats {
             let mut open = self.show_exercise_stats;
             egui::Window::new("Exercise Stats")
@@ -2563,6 +2666,107 @@ impl App for MyApp {
                                     });
                                     ui.end_row();
                                 });
+                            });
+
+                        egui::CollapsingHeader::new("Distributions")
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                egui::Grid::new("hist_grid")
+                                    .num_columns(2)
+                                    .show(ui, |ui| {
+                                        if ui
+                                            .checkbox(
+                                                &mut self.settings.show_rep_histogram,
+                                                "Show Rep Histogram",
+                                            )
+                                            .changed()
+                                        {
+                                            self.settings_dirty = true;
+                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.label("Rep bin:");
+                                            let mut b =
+                                                format!("{:.0}", self.settings.rep_bin_size);
+                                            if ui.text_edit_singleline(&mut b).changed() {
+                                                if let Ok(v) = b.parse::<f32>() {
+                                                    self.settings.rep_bin_size = v.max(1.0);
+                                                    self.settings_dirty = true;
+                                                }
+                                            }
+                                        });
+                                        ui.end_row();
+
+                                        if ui
+                                            .checkbox(
+                                                &mut self.settings.show_weight_histogram,
+                                                "Show Weight Histogram",
+                                            )
+                                            .changed()
+                                        {
+                                            self.settings_dirty = true;
+                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.label("Weight bin:");
+                                            let mut b =
+                                                format!("{:.0}", self.settings.weight_bin_size);
+                                            if ui.text_edit_singleline(&mut b).changed() {
+                                                if let Ok(v) = b.parse::<f32>() {
+                                                    self.settings.weight_bin_size =
+                                                        v.max(1.0);
+                                                    self.settings_dirty = true;
+                                                }
+                                            }
+                                        });
+                                        ui.end_row();
+
+                                        if ui
+                                            .checkbox(
+                                                &mut self.settings.show_volume_histogram,
+                                                "Show Volume Histogram",
+                                            )
+                                            .changed()
+                                        {
+                                            self.settings_dirty = true;
+                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.label("Volume bin:");
+                                            let mut b = format!(
+                                                "{:.0}",
+                                                self.settings.volume_bin_size
+                                            );
+                                        if ui.text_edit_singleline(&mut b).changed() {
+                                                if let Ok(v) = b.parse::<f32>() {
+                                                    self.settings.volume_bin_size =
+                                                        v.max(1.0);
+                                                    self.settings_dirty = true;
+                                                }
+                                            }
+                                        });
+                                        ui.end_row();
+
+                                        if ui
+                                            .checkbox(
+                                                &mut self.settings.show_rpe_histogram,
+                                                "Show RPE Histogram",
+                                            )
+                                            .changed()
+                                        {
+                                            self.settings_dirty = true;
+                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.label("RPE bin:");
+                                            let mut b =
+                                                format!("{:.1}", self.settings.rpe_bin_size);
+                                            if ui.text_edit_singleline(&mut b).changed() {
+                                                if let Ok(v) = b.parse::<f32>() {
+                                                    self.settings.rpe_bin_size =
+                                                        v.max(0.1);
+                                                    self.settings_dirty = true;
+                                                }
+                                            }
+                                        });
+                                        ui.end_row();
+                                    });
                             });
 
                         ui.separator();
@@ -3211,6 +3415,14 @@ mod tests {
         s.show_weight = false;
         s.show_est_1rm = false;
         s.show_sets = false;
+        s.show_rep_histogram = true;
+        s.rep_bin_size = 2.0;
+        s.show_weight_histogram = true;
+        s.weight_bin_size = 5.0;
+        s.show_volume_histogram = true;
+        s.volume_bin_size = 150.0;
+        s.show_rpe_histogram = true;
+        s.rpe_bin_size = 0.5;
         s.show_weight_reps_scatter = true;
         s.show_rpe = true;
         s.show_rpe_trend = true;
