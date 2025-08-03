@@ -5,14 +5,16 @@ const HEVY_URL: &str = "https://api.hevyapp.com/v1/workouts";
 
 #[derive(Debug)]
 pub enum SyncError {
-    Unauthorized,
+    Unauthorized(String),
+    Forbidden(String),
     Other(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl std::fmt::Display for SyncError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SyncError::Unauthorized => write!(f, "Unauthorized"),
+            SyncError::Unauthorized(body) => write!(f, "Unauthorized: {body}"),
+            SyncError::Forbidden(body) => write!(f, "Forbidden: {body}"),
             SyncError::Other(e) => write!(f, "{e}"),
         }
     }
@@ -21,33 +23,35 @@ impl std::fmt::Display for SyncError {
 impl std::error::Error for SyncError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            SyncError::Unauthorized => None,
+            SyncError::Unauthorized(_) | SyncError::Forbidden(_) => None,
             SyncError::Other(e) => Some(&**e),
         }
     }
 }
 
-/// Fetch the latest workouts from the Hevy API using the provided API key.
-///
-/// The function performs a simple HTTP GET request to the public Hevy
-/// endpoint and attempts to map the returned JSON into the existing
-/// `WorkoutEntry` structure. Only a subset of fields is extracted so the
-/// function remains resilient to API changes. Any missing data is skipped.
-pub fn fetch_latest_workouts(
+fn fetch_latest_workouts_with_url(
+    url: &str,
     api_key: &str,
     after: Option<&str>,
 ) -> Result<Vec<WorkoutEntry>, SyncError> {
-    let mut req = ureq::get(HEVY_URL);
+    let mut req = ureq::get(url);
     if let Some(ts) = after {
         req = req.query("after", ts);
     }
     let response = req
-        .set("Authorization", &format!("Bearer {}", api_key))
+        .set("X-API-Key", api_key)
         .set("Accept", "application/json")
         .call();
     let resp = match response {
         Ok(r) => r.into_string().map_err(|e| SyncError::Other(Box::new(e)))?,
-        Err(ureq::Error::Status(401, _)) => return Err(SyncError::Unauthorized),
+        Err(ureq::Error::Status(401, r)) => {
+            let body = r.into_string().unwrap_or_default();
+            return Err(SyncError::Unauthorized(body));
+        }
+        Err(ureq::Error::Status(403, r)) => {
+            let body = r.into_string().unwrap_or_default();
+            return Err(SyncError::Forbidden(body));
+        }
         Err(e) => return Err(SyncError::Other(Box::new(e))),
     };
     let json: Value = serde_json::from_str(&resp).map_err(|e| SyncError::Other(Box::new(e)))?;
@@ -89,4 +93,59 @@ pub fn fetch_latest_workouts(
         }
     }
     Ok(entries)
+}
+
+/// Fetch the latest workouts from the Hevy API using the provided API key.
+///
+/// The function performs a simple HTTP GET request to the public Hevy
+/// endpoint and attempts to map the returned JSON into the existing
+/// `WorkoutEntry` structure. Only a subset of fields is extracted so the
+/// function remains resilient to API changes. Any missing data is skipped.
+pub fn fetch_latest_workouts(
+    api_key: &str,
+    after: Option<&str>,
+) -> Result<Vec<WorkoutEntry>, SyncError> {
+    fetch_latest_workouts_with_url(HEVY_URL, api_key, after)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httpmock::prelude::*;
+
+    #[test]
+    fn maps_403_to_forbidden() {
+        let server = MockServer::start();
+        let m = server.mock(|when, then| {
+            when.method(GET).path("/v1/workouts");
+            then.status(403).body("forbidden body");
+        });
+
+        let err =
+            fetch_latest_workouts_with_url(&server.url("/v1/workouts"), "key", None).unwrap_err();
+        match err {
+            SyncError::Forbidden(body) => assert_eq!(body, "forbidden body"),
+            e => panic!("unexpected error: {e:?}"),
+        }
+
+        m.assert();
+    }
+
+    #[test]
+    fn maps_401_to_unauthorized() {
+        let server = MockServer::start();
+        let m = server.mock(|when, then| {
+            when.method(GET).path("/v1/workouts");
+            then.status(401).body("unauthorized body");
+        });
+
+        let err =
+            fetch_latest_workouts_with_url(&server.url("/v1/workouts"), "key", None).unwrap_err();
+        match err {
+            SyncError::Unauthorized(body) => assert_eq!(body, "unauthorized body"),
+            e => panic!("unexpected error: {e:?}"),
+        }
+
+        m.assert();
+    }
 }
