@@ -1,4 +1,5 @@
 use chrono::{Datelike, NaiveDate};
+use egui::Color32;
 use egui_plot::{Bar, BarChart, Line, PlotPoints, Points};
 
 use crate::body_parts::body_part_for;
@@ -465,7 +466,13 @@ pub fn weekly_summary_plot(weeks: &[WeeklySummary], unit: WeightUnit) -> (BarCha
     let bars: Vec<Bar> = weeks
         .iter()
         .enumerate()
-        .map(|(idx, w)| Bar::new(idx as f64, w.total_sets as f64))
+        .map(|(idx, w)| {
+            let mut bar = Bar::new(idx as f64, w.total_sets as f64);
+            if w.over_threshold {
+                bar = bar.fill(Color32::RED);
+            }
+            bar
+        })
         .collect();
     let pts: Vec<[f64; 2]> = weeks
         .iter()

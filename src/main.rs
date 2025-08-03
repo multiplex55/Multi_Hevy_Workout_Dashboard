@@ -2,7 +2,7 @@
 
 use dirs_next as dirs;
 use eframe::{App, Frame, NativeOptions, egui};
-use egui::RichText;
+use egui::{Color32, RichText};
 use egui_extras::DatePickerButton;
 use egui_plot::{Legend, Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points};
 use rfd::FileDialog;
@@ -1536,12 +1536,24 @@ impl MyApp {
                             ui.label("Week");
                             ui.label("Sets");
                             ui.label("Volume");
+                            ui.label("ACWR");
                             ui.end_row();
                             for w in &weeks {
                                 ui.label(w.year.to_string());
                                 ui.label(format!("{:02}", w.week));
                                 ui.label(w.total_sets.to_string());
                                 ui.label(format!("{:.1}", w.total_volume * f));
+                                if let Some(r) = w.acwr {
+                                    if w.over_threshold {
+                                        ui.label(
+                                            RichText::new(format!("{r:.2} ⚠")).color(Color32::RED),
+                                        );
+                                    } else {
+                                        ui.label(format!("{r:.2}"));
+                                    }
+                                } else {
+                                    ui.label("-");
+                                }
                                 ui.end_row();
                             }
                         });
