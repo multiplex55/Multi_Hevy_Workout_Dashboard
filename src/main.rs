@@ -39,6 +39,7 @@ use report::export_html_report;
 mod body_parts;
 use body_parts::ExerciseType;
 mod exercise_mapping;
+mod sync;
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 struct WorkoutEntry {
@@ -287,6 +288,8 @@ struct Settings {
     auto_load_last: bool,
     last_file: Option<String>,
     #[serde(default)]
+    hevy_api_key: Option<String>,
+    #[serde(default)]
     check_prs: bool,
     github_repo: Option<String>,
     last_pr: Option<u64>,
@@ -397,6 +400,7 @@ impl Default for Settings {
             exclude_warmups: false,
             auto_load_last: true,
             last_file: None,
+            hevy_api_key: None,
             check_prs: false,
             github_repo: None,
             last_pr: None,
@@ -629,6 +633,35 @@ impl MyApp {
                 let _ = sender.send(LoadMessage::Error(e.to_string()));
             }
         });
+    }
+
+    fn sync_from_hevy(&mut self) {
+        if let Some(ref key) = self.settings.hevy_api_key {
+            if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).save_file() {
+                match sync::fetch_latest_workouts(key) {
+                    Ok(mut new_entries) => {
+                        if let Err(e) = save_entries_csv(&path, &new_entries) {
+                            log::error!("Failed to save sync data: {e}");
+                        }
+                        self.workouts.append(&mut new_entries);
+                        self.stats = compute_stats(
+                            &self.workouts,
+                            self.settings.start_date,
+                            self.settings.end_date,
+                        );
+                        self.update_filter_values();
+                        self.last_loaded =
+                            path.file_name().map(|f| f.to_string_lossy().to_string());
+                        self.toast_start = Some(Instant::now());
+                    }
+                    Err(e) => {
+                        log::error!("Sync failed: {e}");
+                    }
+                }
+            }
+        } else {
+            log::warn!("Hevy API key not set");
+        }
     }
 
     fn sort_summary_stats(
@@ -945,9 +978,7 @@ impl MyApp {
                                         );
                                     }
                                 }
-                                if self.settings.show_pr_markers
-                                    && !lw.record_points.is_empty()
-                                {
+                                if self.settings.show_pr_markers && !lw.record_points.is_empty() {
                                     plot_ui.points(
                                         Points::new(lw.record_points.clone())
                                             .shape(MarkerShape::Asterisk)
@@ -1052,9 +1083,7 @@ impl MyApp {
                                         );
                                     }
                                 }
-                                if self.settings.show_pr_markers
-                                    && !lr.record_points.is_empty()
-                                {
+                                if self.settings.show_pr_markers && !lr.record_points.is_empty() {
                                     plot_ui.points(
                                         Points::new(lr.record_points.clone())
                                             .shape(MarkerShape::Asterisk)
@@ -1748,9 +1777,8 @@ impl App for MyApp {
                         ui.close_menu();
                     }
                     if ui.button("Export Report").clicked() {
-                        if let Some(path) = FileDialog::new()
-                            .add_filter("HTML", &["html"])
-                            .save_file()
+                        if let Some(path) =
+                            FileDialog::new().add_filter("HTML", &["html"]).save_file()
                         {
                             let prs_map = analysis::personal_records(
                                 &self.workouts,
@@ -1797,6 +1825,10 @@ impl App for MyApp {
                             );
                         }
                     }
+                }
+
+                if ui.button("Sync").clicked() {
+                    self.sync_from_hevy();
                 }
 
                 if !self.workouts.is_empty() {
@@ -3548,6 +3580,20 @@ impl App for MyApp {
                                         )
                                         .changed()
                                     {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.end_row();
+                                });
+                            });
+
+                        egui::CollapsingHeader::new("Sync")
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                egui::Grid::new("sync_grid").num_columns(2).show(ui, |ui| {
+                                    ui.label("Hevy API Key:");
+                                    let key =
+                                        self.settings.hevy_api_key.get_or_insert_with(String::new);
+                                    if ui.text_edit_singleline(key).changed() {
                                         self.settings_dirty = true;
                                     }
                                     ui.end_row();
