@@ -242,6 +242,8 @@ struct Settings {
     show_exercise_panel: bool,
     highlight_max: bool,
     #[serde(default)]
+    show_pr_markers: bool,
+    #[serde(default)]
     show_weight_trend: bool,
     #[serde(default)]
     show_volume_trend: bool,
@@ -361,6 +363,7 @@ impl Default for Settings {
             show_pr_window: false,
             show_exercise_panel: true,
             highlight_max: true,
+            show_pr_markers: true,
             show_weight_trend: false,
             show_volume_trend: false,
             show_weight_forecast: false,
@@ -941,14 +944,16 @@ impl MyApp {
                                                 .name(label),
                                         );
                                     }
-                                    if !lw.record_points.is_empty() {
-                                        plot_ui.points(
-                                            Points::new(lw.record_points.clone())
-                                                .shape(MarkerShape::Asterisk)
-                                                .color(egui::Color32::LIGHT_GREEN)
-                                                .name("Record"),
-                                        );
-                                    }
+                                }
+                                if self.settings.show_pr_markers
+                                    && !lw.record_points.is_empty()
+                                {
+                                    plot_ui.points(
+                                        Points::new(lw.record_points.clone())
+                                            .shape(MarkerShape::Asterisk)
+                                            .color(egui::Color32::LIGHT_GREEN)
+                                            .name("Record"),
+                                    );
                                 }
                             }
                             if let Some(ptr) = pointer {
@@ -1046,14 +1051,16 @@ impl MyApp {
                                                 .name(label),
                                         );
                                     }
-                                    if !lr.record_points.is_empty() {
-                                        plot_ui.points(
-                                            Points::new(lr.record_points.clone())
-                                                .shape(MarkerShape::Asterisk)
-                                                .color(egui::Color32::LIGHT_GREEN)
-                                                .name("Record"),
-                                        );
-                                    }
+                                }
+                                if self.settings.show_pr_markers
+                                    && !lr.record_points.is_empty()
+                                {
+                                    plot_ui.points(
+                                        Points::new(lr.record_points.clone())
+                                            .shape(MarkerShape::Asterisk)
+                                            .color(egui::Color32::LIGHT_GREEN)
+                                            .name("Record"),
+                                    );
                                 }
                             }
                             if let Some(ptr) = pointer {
@@ -2775,8 +2782,8 @@ impl App for MyApp {
                                     }
                                     if ui
                                         .checkbox(
-                                            &mut self.settings.show_weight_trend,
-                                            "Show Weight Trend",
+                                            &mut self.settings.show_pr_markers,
+                                            "Show PR markers",
                                         )
                                         .changed()
                                     {
@@ -2786,6 +2793,15 @@ impl App for MyApp {
 
                                     if ui
                                         .checkbox(
+                                            &mut self.settings.show_weight_trend,
+                                            "Show Weight Trend",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    if ui
+                                        .checkbox(
                                             &mut self.settings.show_weight_forecast,
                                             "Show Weight Forecast",
                                         )
@@ -2793,6 +2809,8 @@ impl App for MyApp {
                                     {
                                         self.settings_dirty = true;
                                     }
+                                    ui.end_row();
+
                                     if ui
                                         .checkbox(
                                             &mut self.settings.show_smoothed,
