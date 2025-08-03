@@ -4,8 +4,64 @@ use crate::body_parts::body_part_for;
 use crate::exercise_utils::normalize_exercise;
 use crate::plotting::OneRmFormula;
 use chrono::{Datelike, NaiveDate};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct NotesQuery {
+    pub tags: Vec<String>,
+    pub regex: Option<String>,
+}
+
+impl NotesQuery {
+    pub fn parse(input: &str) -> Self {
+        let mut tags = Vec::new();
+        let mut regex = None;
+        for token in input.split_whitespace() {
+            if let Some(tag) = token
+                .strip_prefix('#')
+                .or_else(|| token.strip_prefix("tag:"))
+            {
+                tags.push(tag.to_string());
+            } else if let Some(re) = token.strip_prefix("regex:") {
+                regex = Some(re.to_string());
+            } else if token.starts_with('/') && token.ends_with('/') && token.len() > 2 {
+                regex = Some(token[1..token.len() - 1].to_string());
+            } else {
+                tags.push(token.to_string());
+            }
+        }
+        Self { tags, regex }
+    }
+
+    pub fn matches(&self, notes: &str) -> bool {
+        let lower = notes.to_lowercase();
+        for tag in &self.tags {
+            if !lower.contains(&tag.to_lowercase()) {
+                return false;
+            }
+        }
+        if let Some(ref pat) = self.regex {
+            if let Ok(re) = Regex::new(pat) {
+                if !re.is_match(&lower) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+pub fn parse_notes_query(input: &str) -> NotesQuery {
+    NotesQuery::parse(input)
+}
+
+pub fn notes_query_matches(q: &NotesQuery, notes: &str) -> bool {
+    q.matches(notes)
+}
 
 /// Summary statistics about a workout log.
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]

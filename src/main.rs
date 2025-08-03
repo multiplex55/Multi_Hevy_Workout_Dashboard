@@ -18,7 +18,7 @@ use log::info;
 use strsim::damerau_levenshtein;
 
 mod analysis;
-use analysis::{BasicStats, ExerciseStats, compute_stats, format_load_message};
+use analysis::{BasicStats, ExerciseStats, NotesQuery, compute_stats, format_load_message};
 mod plotting;
 use plotting::{
     HistogramMetric, OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis,
@@ -283,7 +283,7 @@ struct Settings {
     max_weight: Option<f32>,
     min_reps: Option<u32>,
     max_reps: Option<u32>,
-    notes_filter: Option<String>,
+    notes_filter: Option<NotesQuery>,
     #[serde(default)]
     exclude_warmups: bool,
     #[serde(default)]
@@ -778,12 +778,11 @@ impl MyApp {
                 return false;
             }
         }
-        if let Some(ref nf) = self.settings.notes_filter {
-            let nf_l = nf.to_lowercase();
+        if let Some(ref nq) = self.settings.notes_filter {
             if e.raw
                 .exercise_notes
                 .as_deref()
-                .map(|n| n.to_lowercase().contains(&nf_l))
+                .map(|n| analysis::notes_query_matches(nq, n))
                 != Some(true)
             {
                 return false;
@@ -3354,19 +3353,70 @@ impl App for MyApp {
                                         ui.end_row();
 
                                         ui.horizontal(|ui| {
-                                            ui.label("Notes contains:");
-                                            let mut nf = self
+                                            ui.label("Tags:");
+                                            let mut tags = self
                                                 .settings
                                                 .notes_filter
-                                                .clone()
+                                                .as_ref()
+                                                .map(|q| q.tags.join(" "))
                                                 .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut nf).changed() {
-                                                self.settings.notes_filter = if nf.trim().is_empty()
-                                                {
-                                                    None
+                                            if ui.text_edit_singleline(&mut tags).changed() {
+                                                let regex = self
+                                                    .settings
+                                                    .notes_filter
+                                                    .as_ref()
+                                                    .and_then(|q| q.regex.clone())
+                                                    .unwrap_or_default();
+                                                let combined = if regex.trim().is_empty() {
+                                                    tags.clone()
+                                                } else if tags.trim().is_empty() {
+                                                    format!("regex:{regex}")
                                                 } else {
-                                                    Some(nf)
+                                                    format!("{tags} regex:{regex}")
                                                 };
+                                                let nq = analysis::parse_notes_query(&combined);
+                                                self.settings.notes_filter =
+                                                    if nq.tags.is_empty() && nq.regex.is_none() {
+                                                        None
+                                                    } else {
+                                                        Some(nq)
+                                                    };
+                                                self.settings_dirty = true;
+                                            }
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Regex:");
+                                            let mut regex_text = self
+                                                .settings
+                                                .notes_filter
+                                                .as_ref()
+                                                .and_then(|q| q.regex.clone())
+                                                .unwrap_or_default();
+                                            if ui.text_edit_singleline(&mut regex_text).changed() {
+                                                let tags = self
+                                                    .settings
+                                                    .notes_filter
+                                                    .as_ref()
+                                                    .map(|q| q.tags.join(" "))
+                                                    .unwrap_or_default();
+                                                let combined = if tags.trim().is_empty() {
+                                                    if regex_text.trim().is_empty() {
+                                                        String::new()
+                                                    } else {
+                                                        format!("regex:{regex_text}")
+                                                    }
+                                                } else if regex_text.trim().is_empty() {
+                                                    tags.clone()
+                                                } else {
+                                                    format!("{tags} regex:{regex_text}")
+                                                };
+                                                let nq = analysis::parse_notes_query(&combined);
+                                                self.settings.notes_filter =
+                                                    if nq.tags.is_empty() && nq.regex.is_none() {
+                                                        None
+                                                    } else {
+                                                        Some(nq)
+                                                    };
                                                 self.settings_dirty = true;
                                             }
                                         });
@@ -3726,7 +3776,10 @@ mod tests {
         s.max_weight = Some(225.0);
         s.min_reps = Some(3);
         s.max_reps = Some(10);
-        s.notes_filter = Some("tempo".into());
+        s.notes_filter = Some(NotesQuery {
+            tags: vec!["tempo".into()],
+            regex: None,
+        });
         s.exclude_warmups = true;
         s.show_body_part_volume = true;
         s.show_body_part_distribution = true;
@@ -3981,6 +4034,46 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
         let filtered = app.filtered_entries();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].exercise, "Lying Leg Curl (Machine)");
+    }
+
+    #[test]
+    fn notes_query_filter() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow {
+                    exercise_notes: Some("#tempo slow".into()),
+                    ..RawWorkoutRow::default()
+                },
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Bench".into(),
+                weight: 100.0,
+                reps: 5,
+                raw: RawWorkoutRow {
+                    exercise_notes: Some("fast".into()),
+                    ..RawWorkoutRow::default()
+                },
+            },
+        ];
+        let mut app = MyApp {
+            workouts: entries,
+            ..Default::default()
+        };
+        app.settings.notes_filter = Some(NotesQuery {
+            tags: vec!["tempo".into()],
+            regex: Some("slow".into()),
+        });
+        let filtered = app.filtered_entries();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(
+            filtered[0].raw.exercise_notes.as_deref(),
+            Some("#tempo slow")
+        );
     }
 
     #[test]
