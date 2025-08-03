@@ -3,6 +3,30 @@ use serde_json::Value;
 
 const HEVY_URL: &str = "https://api.hevyapp.com/v1/workouts";
 
+#[derive(Debug)]
+pub enum SyncError {
+    Unauthorized,
+    Other(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl std::fmt::Display for SyncError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SyncError::Unauthorized => write!(f, "Unauthorized"),
+            SyncError::Other(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for SyncError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SyncError::Unauthorized => None,
+            SyncError::Other(e) => Some(&**e),
+        }
+    }
+}
+
 /// Fetch the latest workouts from the Hevy API using the provided API key.
 ///
 /// The function performs a simple HTTP GET request to the public Hevy
@@ -12,17 +36,21 @@ const HEVY_URL: &str = "https://api.hevyapp.com/v1/workouts";
 pub fn fetch_latest_workouts(
     api_key: &str,
     after: Option<&str>,
-) -> Result<Vec<WorkoutEntry>, Box<dyn std::error::Error>> {
+) -> Result<Vec<WorkoutEntry>, SyncError> {
     let mut req = ureq::get(HEVY_URL);
     if let Some(ts) = after {
         req = req.query("after", ts);
     }
-    let resp = req
+    let response = req
         .set("Authorization", &format!("Bearer {}", api_key))
         .set("Accept", "application/json")
-        .call()?
-        .into_string()?;
-    let json: Value = serde_json::from_str(&resp)?;
+        .call();
+    let resp = match response {
+        Ok(r) => r.into_string().map_err(|e| SyncError::Other(Box::new(e)))?,
+        Err(ureq::Error::Status(401, _)) => return Err(SyncError::Unauthorized),
+        Err(e) => return Err(SyncError::Other(Box::new(e))),
+    };
+    let json: Value = serde_json::from_str(&resp).map_err(|e| SyncError::Other(Box::new(e)))?;
     let mut entries = Vec::new();
     if let Some(workouts) = json.as_array() {
         for w in workouts {
