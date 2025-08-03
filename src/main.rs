@@ -925,8 +925,21 @@ impl MyApp {
                     self.settings.end_date,
                 );
                 if self.settings.show_weight {
+                    let x_label = match self.settings.x_axis {
+                        XAxis::Date => "Date",
+                        XAxis::WorkoutIndex => "Workout",
+                    };
+                    let unit_label = match self.settings.weight_unit {
+                        WeightUnit::Kg => "kg",
+                        WeightUnit::Lbs => "lbs",
+                    };
+                    let y_label = match self.settings.y_axis {
+                        YAxis::Weight => format!("Weight ({unit_label})"),
+                        YAxis::Volume => format!("Volume ({unit_label})"),
+                    };
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
+                    ui.heading("Weight Over Time");
                     let resp = Plot::new("weight_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -939,6 +952,8 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .x_axis_label(x_label)
+                        .y_axis_label(y_label)
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let pointer = plot_ui.pointer_coordinate();
@@ -1057,8 +1072,17 @@ impl MyApp {
                 }
 
                 if self.settings.show_est_1rm {
+                    let x_label = match self.settings.x_axis {
+                        XAxis::Date => "Date",
+                        XAxis::WorkoutIndex => "Workout",
+                    };
+                    let unit_label = match self.settings.weight_unit {
+                        WeightUnit::Kg => "kg",
+                        WeightUnit::Lbs => "lbs",
+                    };
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
+                    ui.heading("Estimated 1RM Over Time");
                     let resp = Plot::new("est_1rm_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -1071,6 +1095,8 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .x_axis_label(x_label)
+                        .y_axis_label(format!("Estimated 1RM ({unit_label})"))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let pointer = plot_ui.pointer_coordinate();
@@ -1166,8 +1192,17 @@ impl MyApp {
                         .iter()
                         .filter_map(|ex| stats_map.get(ex).and_then(|s| s.volume_trend))
                         .sum();
+                    let x_label = match self.settings.x_axis {
+                        XAxis::Date => "Date",
+                        XAxis::WorkoutIndex => "Workout",
+                    };
+                    let unit_label = match self.settings.weight_unit {
+                        WeightUnit::Kg => "kg",
+                        WeightUnit::Lbs => "lbs",
+                    };
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
+                    ui.heading("Total Volume Over Time");
                     let resp = Plot::new("volume_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -1180,6 +1215,8 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .x_axis_label(x_label)
+                        .y_axis_label(format!("Volume ({unit_label})"))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let pointer = plot_ui.pointer_coordinate();
@@ -1288,6 +1325,15 @@ impl MyApp {
                 }
 
                 if self.settings.show_exercise_volume && sel.len() == 1 {
+                    let x_label = match self.settings.x_axis {
+                        XAxis::Date => "Date",
+                        XAxis::WorkoutIndex => "Workout",
+                    };
+                    let unit_label = match self.settings.weight_unit {
+                        WeightUnit::Kg => "kg",
+                        WeightUnit::Lbs => "lbs",
+                    };
+                    ui.heading("Exercise Volume Over Time");
                     let resp = Plot::new("exercise_volume_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -1300,6 +1346,8 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .x_axis_label(x_label)
+                        .y_axis_label(format!("Volume ({unit_label})"))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let ma = if self.settings.show_smoothed {
@@ -1325,6 +1373,15 @@ impl MyApp {
                 }
 
                 if self.settings.show_body_part_volume {
+                    let x_label = match self.settings.x_axis {
+                        XAxis::Date => "Date",
+                        XAxis::WorkoutIndex => "Workout",
+                    };
+                    let unit_label = match self.settings.weight_unit {
+                        WeightUnit::Kg => "kg",
+                        WeightUnit::Lbs => "lbs",
+                    };
+                    ui.heading("Body Part Volume Over Time");
                     let resp = Plot::new("body_part_volume_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -1337,6 +1394,8 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .x_axis_label(x_label)
+                        .y_axis_label(format!("Volume ({unit_label})"))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let ma = if self.settings.show_smoothed {
@@ -1372,17 +1431,27 @@ impl MyApp {
                 }
 
                 if self.settings.show_body_part_distribution {
+                    let (bars, body_parts) = body_part_distribution(
+                        filtered,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    );
+                    let bp_for_axis = body_parts.clone();
+                    ui.heading("Body Part Distribution");
                     let resp = Plot::new("body_part_distribution_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
-                        .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
+                        .x_axis_formatter(move |mark, _, _| {
+                            bp_for_axis
+                                .get(mark.value as usize)
+                                .cloned()
+                                .unwrap_or_default()
+                        })
+                        .x_axis_label("Body Part")
+                        .y_axis_label("Sets")
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
-                            plot_ui.bar_chart(body_part_distribution(
-                                filtered,
-                                self.settings.start_date,
-                                self.settings.end_date,
-                            ));
+                            plot_ui.bar_chart(bars);
                         });
 
                     first_resp.get_or_insert(resp);
@@ -1394,10 +1463,13 @@ impl MyApp {
                     } else {
                         None
                     };
+                    ui.heading("Sets Per Day");
                     let resp = Plot::new("sets_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
                         .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
+                        .x_axis_label("Day")
+                        .y_axis_label("Sets")
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             plot_ui.bar_chart(sets_per_day_bar(
@@ -1416,6 +1488,7 @@ impl MyApp {
                         WeightUnit::Kg => "kg",
                         WeightUnit::Lbs => "lbs",
                     };
+                    ui.heading("Weight vs Reps");
                     let resp = Plot::new("weight_reps_scatter_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -1445,9 +1518,14 @@ impl MyApp {
                 }
 
                 if self.settings.show_rpe {
+                    let x_label = match self.settings.x_axis {
+                        XAxis::Date => "Date",
+                        XAxis::WorkoutIndex => "Workout",
+                    };
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut line_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
+                    ui.heading("RPE Over Time");
                     let resp = Plot::new("rpe_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -1460,6 +1538,8 @@ impl MyApp {
                                 format!("{:.0}", mark.value)
                             }
                         })
+                        .x_axis_label(x_label)
+                        .y_axis_label("RPE")
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             let pointer = plot_ui.pointer_coordinate();
@@ -1549,6 +1629,11 @@ impl MyApp {
                     );
                     let weeks_for_axis = weeks.clone();
                     let (bars, line) = weekly_summary_plot(&weeks, self.settings.weight_unit);
+                    let unit_label = match self.settings.weight_unit {
+                        WeightUnit::Kg => "kg",
+                        WeightUnit::Lbs => "lbs",
+                    };
+                    ui.heading("Weekly Summary");
                     let resp = Plot::new("weekly_summary_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -1559,6 +1644,8 @@ impl MyApp {
                                 .map(|w| format!("{}-{:02}", w.year, w.week))
                                 .unwrap_or_else(|| format!("{:.0}", mark.value))
                         })
+                        .x_axis_label("Week")
+                        .y_axis_label(format!("Volume ({unit_label}) / Sets"))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
                             plot_ui.bar_chart(bars);
@@ -1600,9 +1687,12 @@ impl MyApp {
         });
 
         first_resp.unwrap_or_else(|| {
+            ui.heading("No Data");
             Plot::new("empty_plot")
                 .width(self.settings.plot_width)
                 .height(self.settings.plot_height)
+                .x_axis_label("")
+                .y_axis_label("")
                 .show(ui, |_ui| {})
         })
     }
@@ -2429,10 +2519,13 @@ impl App for MyApp {
                         ui.label("No entries");
                     } else {
                         if self.settings.show_rep_histogram {
+                            ui.heading("Rep Distribution");
                             Plot::new("rep_hist_window")
                                 .width(self.settings.plot_width)
                                 .height(self.settings.plot_height)
                                 .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
+                                .x_axis_label("Reps")
+                                .y_axis_label("Frequency")
                                 .legend(Legend::default())
                                 .show(ui, |plot_ui| {
                                     plot_ui.bar_chart(histogram(
@@ -2451,11 +2544,13 @@ impl App for MyApp {
                                 WeightUnit::Kg => "kg",
                                 WeightUnit::Lbs => "lbs",
                             };
+                            ui.heading("Weight Distribution");
                             Plot::new("weight_hist_window")
                                 .width(self.settings.plot_width)
                                 .height(self.settings.plot_height)
                                 .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
                                 .x_axis_label(format!("Weight ({unit_label})"))
+                                .y_axis_label("Frequency")
                                 .legend(Legend::default())
                                 .show(ui, |plot_ui| {
                                     plot_ui.bar_chart(histogram(
@@ -2470,10 +2565,13 @@ impl App for MyApp {
                                 });
                         }
                         if self.settings.show_volume_histogram {
+                            ui.heading("Volume Distribution");
                             Plot::new("volume_hist_window")
                                 .width(self.settings.plot_width)
                                 .height(self.settings.plot_height)
                                 .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
+                                .x_axis_label("Volume")
+                                .y_axis_label("Frequency")
                                 .legend(Legend::default())
                                 .show(ui, |plot_ui| {
                                     plot_ui.bar_chart(histogram(
@@ -2488,10 +2586,13 @@ impl App for MyApp {
                                 });
                         }
                         if self.settings.show_rpe_histogram {
+                            ui.heading("RPE Distribution");
                             Plot::new("rpe_hist_window")
                                 .width(self.settings.plot_width)
                                 .height(self.settings.plot_height)
                                 .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
+                                .x_axis_label("RPE")
+                                .y_axis_label("Frequency")
                                 .legend(Legend::default())
                                 .show(ui, |plot_ui| {
                                     plot_ui.bar_chart(histogram(

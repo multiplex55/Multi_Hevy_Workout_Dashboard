@@ -423,15 +423,17 @@ pub fn body_part_distribution(
     entries: &[WorkoutEntry],
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
-) -> BarChart {
+) -> (BarChart, Vec<String>) {
     use std::collections::BTreeMap;
 
     let map = aggregate_sets_by_body_part(entries, start, end);
     let mut bars = Vec::new();
-    for (idx, (_part, count)) in BTreeMap::from_iter(map).into_iter().enumerate() {
+    let mut body_parts = Vec::new();
+    for (idx, (part, count)) in BTreeMap::from_iter(map).into_iter().enumerate() {
         bars.push(Bar::new(idx as f64, count as f64));
+        body_parts.push(part);
     }
-    BarChart::new(bars).name("Body Parts")
+    (BarChart::new(bars).name("Body Parts"), body_parts)
 }
 
 /// Generate scatter points of weight versus repetitions for the selected
@@ -1606,7 +1608,7 @@ mod tests {
         use std::collections::HashMap;
 
         let entries = sample_entries();
-        let chart = body_part_distribution(&entries, None, None);
+        let (chart, _) = body_part_distribution(&entries, None, None);
         let bounds = PlotItem::bounds(&chart);
 
         let expected =
