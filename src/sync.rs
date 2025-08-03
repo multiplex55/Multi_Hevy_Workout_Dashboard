@@ -11,8 +11,13 @@ const HEVY_URL: &str = "https://api.hevyapp.com/v1/workouts";
 /// function remains resilient to API changes. Any missing data is skipped.
 pub fn fetch_latest_workouts(
     api_key: &str,
+    after: Option<&str>,
 ) -> Result<Vec<WorkoutEntry>, Box<dyn std::error::Error>> {
-    let resp = ureq::get(HEVY_URL)
+    let mut req = ureq::get(HEVY_URL);
+    if let Some(ts) = after {
+        req = req.query("after", ts);
+    }
+    let resp = req
         .set("Authorization", &format!("Bearer {}", api_key))
         .set("Accept", "application/json")
         .call()?
