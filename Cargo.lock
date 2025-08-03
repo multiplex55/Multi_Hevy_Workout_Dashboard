@@ -20,6 +20,7 @@ dependencies = [
  "once_cell",
  "phf",
  "plotters",
+ "regex",
  "rfd",
  "serde",
  "serde_json",
