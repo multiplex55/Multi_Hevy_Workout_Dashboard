@@ -22,11 +22,11 @@ use analysis::{BasicStats, ExerciseStats, NotesQuery, compute_stats, format_load
 mod plotting;
 use plotting::{
     HistogramMetric, OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis,
-    aggregated_volume_points, average_rpe_line, body_part_distribution, body_part_volume_line,
-    body_part_pie, body_part_volume_trend, estimated_1rm_line, exercise_volume_line,
-    forecast_line_points, histogram, sets_per_day_bar, training_volume_line, trend_line_points,
-    unique_exercises, weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
-    draw_crosshair, draw_pie_chart, format_hover_text,
+    aggregated_volume_points, average_rpe_line, body_part_distribution, body_part_pie,
+    body_part_volume_line, body_part_volume_trend, draw_crosshair, draw_pie_chart,
+    estimated_1rm_line, exercise_volume_line, forecast_line_points, format_hover_text, histogram,
+    sets_per_day_bar, training_volume_line, trend_line_points, unique_exercises,
+    weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -529,6 +529,8 @@ struct MyApp {
     load_rx: Option<mpsc::Receiver<LoadMessage>>,
     pending_filename: Option<String>,
     pending_path: Option<String>,
+    show_point_details: bool,
+    point_entries: Vec<WorkoutEntry>,
 }
 
 impl Default for MyApp {
@@ -581,6 +583,8 @@ impl Default for MyApp {
             load_rx: None,
             pending_filename: None,
             pending_path: None,
+            show_point_details: false,
+            point_entries: Vec::new(),
         };
 
         app.selected_exercises = app.settings.selected_exercises.clone();
@@ -976,6 +980,85 @@ impl MyApp {
         (workouts.len(), working, warmups)
     }
 
+    fn entries_for_point(&self, exercise: Option<&str>, x: f64) -> Vec<WorkoutEntry> {
+        let ex_norm = exercise.map(|e| normalize_exercise(e));
+        let mut filtered: Vec<&WorkoutEntry> = self
+            .workouts
+            .iter()
+            .filter(|e| {
+                if !self.entry_matches_filters(e) {
+                    return false;
+                }
+                if let Some(ref ex) = ex_norm {
+                    normalize_exercise(&e.exercise) == *ex
+                } else if self.selected_exercises.is_empty() {
+                    true
+                } else {
+                    let ne = normalize_exercise(&e.exercise);
+                    self.selected_exercises
+                        .iter()
+                        .any(|s| normalize_exercise(s) == ne)
+                }
+            })
+            .collect();
+
+        if self.settings.x_axis == XAxis::Date {
+            filtered.sort_by_key(|e| NaiveDate::parse_from_str(&e.date, "%Y-%m-%d").ok());
+        }
+
+        filtered.retain(|e| {
+            if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
+                if let Some(start) = self.settings.start_date {
+                    if d < start {
+                        return false;
+                    }
+                }
+                if let Some(end) = self.settings.end_date {
+                    if d > end {
+                        return false;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        });
+
+        match self.settings.x_axis {
+            XAxis::Date => {
+                if let Some(date) = NaiveDate::from_num_days_from_ce_opt(x.round() as i32) {
+                    filtered
+                        .into_iter()
+                        .filter(|e| {
+                            NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
+                                .map(|d| d == date)
+                                .unwrap_or(false)
+                        })
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            }
+            XAxis::WorkoutIndex => {
+                let idx = x.round() as usize;
+                filtered
+                    .into_iter()
+                    .nth(idx)
+                    .map(|e| vec![(*e).clone()])
+                    .unwrap_or_default()
+            }
+        }
+    }
+
+    fn handle_plot_click(&mut self, exercise: Option<String>, point: [f64; 2]) {
+        let entries = self.entries_for_point(exercise.as_deref(), point[0]);
+        if !entries.is_empty() {
+            self.point_entries = entries;
+            self.show_point_details = true;
+        }
+    }
+
     fn draw_plot(
         &mut self,
         ctx: &egui::Context,
@@ -1008,6 +1091,8 @@ impl MyApp {
                         YAxis::Volume => format!("Volume ({unit_label})"),
                     };
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
+                    let mut point_exercises: Vec<String> = Vec::new();
+                    let mut pointer = None;
                     let mut highlight: Option<[f64; 2]> = None;
                     ui.heading("Weight Over Time");
                     let resp = Plot::new("weight_plot")
@@ -1026,7 +1111,7 @@ impl MyApp {
                         .y_axis_label(y_label)
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
-                            let pointer = plot_ui.pointer_coordinate();
+                            pointer = plot_ui.pointer_coordinate();
                             let ma = if self.settings.show_smoothed {
                                 Some(self.settings.ma_window)
                             } else {
@@ -1044,11 +1129,14 @@ impl MyApp {
                                 ma,
                                 self.settings.smoothing_method,
                             ) {
-                                for p in &lw.points {
-                                    all_points.push(*p);
-                                }
-                                plot_ui.line(lw.line);
                                 if lw.max_point.is_some() {
+                                    if let Some(ex) = sel.get(ex_idx) {
+                                        for p in &lw.points {
+                                            all_points.push(*p);
+                                            point_exercises.push(ex.clone());
+                                        }
+                                    }
+                                    plot_ui.line(lw.line);
                                     if self.settings.show_weight_trend {
                                         let trend = trend_line_points(&lw.points);
                                         if trend.len() == 2 {
@@ -1078,8 +1166,10 @@ impl MyApp {
                                         }
                                     }
                                     ex_idx += 1;
+                                } else {
+                                    plot_ui.line(lw.line);
                                 }
-                                if self.settings.highlight_max {
+                                if lw.max_point.is_some() && self.settings.highlight_max {
                                     if let (Some(p), Some(label)) =
                                         (lw.max_point, lw.label.as_deref())
                                     {
@@ -1095,14 +1185,15 @@ impl MyApp {
                                                 .name(label),
                                         );
                                     }
-                                }
-                                if self.settings.show_pr_markers && !lw.record_points.is_empty() {
-                                    plot_ui.points(
-                                        Points::new(lw.record_points.clone())
-                                            .shape(MarkerShape::Asterisk)
-                                            .color(egui::Color32::LIGHT_GREEN)
-                                            .name("Record"),
-                                    );
+                                    if self.settings.show_pr_markers && !lw.record_points.is_empty()
+                                    {
+                                        plot_ui.points(
+                                            Points::new(lw.record_points.clone())
+                                                .shape(MarkerShape::Asterisk)
+                                                .color(egui::Color32::LIGHT_GREEN)
+                                                .name("Record"),
+                                        );
+                                    }
                                 }
                             }
                             if let Some(ptr) = pointer {
@@ -1117,6 +1208,14 @@ impl MyApp {
                                 }
                             }
                         });
+                    if resp.response.clicked() {
+                        if let Some(p) = highlight {
+                            if let Some(idx) = all_points.iter().position(|pt| *pt == p) {
+                                let ex = point_exercises.get(idx).cloned();
+                                self.handle_plot_click(ex, p);
+                            }
+                        }
+                    }
 
                     if let Some(p) = highlight {
                         if resp.response.hovered() {
@@ -1151,6 +1250,8 @@ impl MyApp {
                         WeightUnit::Lbs => "lbs",
                     };
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
+                    let mut point_exercises: Vec<String> = Vec::new();
+                    let mut pointer = None;
                     let mut highlight: Option<[f64; 2]> = None;
                     ui.heading("Estimated 1RM Over Time");
                     let resp = Plot::new("est_1rm_plot")
@@ -1169,12 +1270,13 @@ impl MyApp {
                         .y_axis_label(format!("Estimated 1RM ({unit_label})"))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
-                            let pointer = plot_ui.pointer_coordinate();
+                            pointer = plot_ui.pointer_coordinate();
                             let ma = if self.settings.show_smoothed {
                                 Some(self.settings.ma_window)
                             } else {
                                 None
                             };
+                            let mut ex_idx = 0usize;
                             for lr in estimated_1rm_line(
                                 filtered,
                                 sel,
@@ -1186,39 +1288,51 @@ impl MyApp {
                                 ma,
                                 self.settings.smoothing_method,
                             ) {
-                                for p in &lr.points {
-                                    all_points.push(*p);
-                                }
-                                plot_ui.line(lr.line);
-                                if self.settings.highlight_max {
-                                    if let (Some(p), Some(label)) =
-                                        (lr.max_point, lr.label.as_deref())
-                                    {
-                                        let (shape, color) = match label {
-                                            "Max 1RM" => (MarkerShape::Circle, egui::Color32::BLUE),
-                                            "Max Weight" => {
-                                                (MarkerShape::Diamond, egui::Color32::RED)
-                                            }
-                                            "Max Volume" => {
-                                                (MarkerShape::Diamond, egui::Color32::GREEN)
-                                            }
-                                            _ => (MarkerShape::Circle, egui::Color32::WHITE),
-                                        };
-                                        plot_ui.points(
-                                            Points::new(vec![p])
-                                                .shape(shape)
-                                                .color(color)
-                                                .name(label),
-                                        );
+                                if lr.max_point.is_some() {
+                                    if let Some(ex) = sel.get(ex_idx) {
+                                        for p in &lr.points {
+                                            all_points.push(*p);
+                                            point_exercises.push(ex.clone());
+                                        }
                                     }
-                                }
-                                if self.settings.show_pr_markers && !lr.record_points.is_empty() {
-                                    plot_ui.points(
-                                        Points::new(lr.record_points.clone())
-                                            .shape(MarkerShape::Asterisk)
-                                            .color(egui::Color32::LIGHT_GREEN)
-                                            .name("Record"),
-                                    );
+                                    plot_ui.line(lr.line);
+                                    if self.settings.highlight_max {
+                                        if let (Some(p), Some(label)) =
+                                            (lr.max_point, lr.label.as_deref())
+                                        {
+                                            let (shape, color) = match label {
+                                                "Max 1RM" => {
+                                                    (MarkerShape::Circle, egui::Color32::BLUE)
+                                                }
+                                                "Max Weight" => {
+                                                    (MarkerShape::Diamond, egui::Color32::RED)
+                                                }
+                                                "Max Volume" => {
+                                                    (MarkerShape::Diamond, egui::Color32::GREEN)
+                                                }
+                                                _ => (MarkerShape::Circle, egui::Color32::WHITE),
+                                            };
+                                            plot_ui.points(
+                                                Points::new(vec![p])
+                                                    .shape(shape)
+                                                    .color(color)
+                                                    .name(label),
+                                            );
+                                        }
+                                        if self.settings.show_pr_markers
+                                            && !lr.record_points.is_empty()
+                                        {
+                                            plot_ui.points(
+                                                Points::new(lr.record_points.clone())
+                                                    .shape(MarkerShape::Asterisk)
+                                                    .color(egui::Color32::LIGHT_GREEN)
+                                                    .name("Record"),
+                                            );
+                                        }
+                                    }
+                                    ex_idx += 1;
+                                } else {
+                                    plot_ui.line(lr.line);
                                 }
                             }
                             if let Some(ptr) = pointer {
@@ -1233,6 +1347,14 @@ impl MyApp {
                                 }
                             }
                         });
+                    if resp.response.clicked() {
+                        if let Some(p) = highlight {
+                            if let Some(idx) = all_points.iter().position(|pt| *pt == p) {
+                                let ex = point_exercises.get(idx).cloned();
+                                self.handle_plot_click(ex, p);
+                            }
+                        }
+                    }
 
                     if let Some(p) = highlight {
                         if resp.response.hovered() {
@@ -1271,6 +1393,7 @@ impl MyApp {
                         WeightUnit::Lbs => "lbs",
                     };
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
+                    let mut pointer = None;
                     let mut highlight: Option<[f64; 2]> = None;
                     ui.heading("Total Volume Over Time");
                     let resp = Plot::new("volume_plot")
@@ -1289,7 +1412,7 @@ impl MyApp {
                         .y_axis_label(format!("Volume ({unit_label})"))
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
-                            let pointer = plot_ui.pointer_coordinate();
+                            pointer = plot_ui.pointer_coordinate();
                             let ma = if self.settings.show_smoothed {
                                 Some(self.settings.ma_window)
                             } else {
@@ -1370,6 +1493,11 @@ impl MyApp {
                                 }
                             }
                         });
+                    if resp.response.clicked() {
+                        if let Some(p) = highlight {
+                            self.handle_plot_click(None, p);
+                        }
+                    }
 
                     if let Some(p) = highlight {
                         if resp.response.hovered() {
@@ -1506,11 +1634,8 @@ impl MyApp {
                         self.settings.start_date,
                         self.settings.end_date,
                     );
-                    let pie = body_part_pie(
-                        filtered,
-                        self.settings.start_date,
-                        self.settings.end_date,
-                    );
+                    let pie =
+                        body_part_pie(filtered, self.settings.start_date, self.settings.end_date);
                     let bp_for_axis = body_parts.clone();
                     ui.heading("Body Part Distribution");
                     let resp = Plot::new("body_part_distribution_plot")
@@ -1590,7 +1715,8 @@ impl MyApp {
                             if self.settings.show_crosshair {
                                 if let Some(ptr) = plot_ui.pointer_coordinate() {
                                     draw_crosshair(plot_ui, ptr);
-                                    hover_text = Some(format_hover_text(ptr, self.settings.weight_unit));
+                                    hover_text =
+                                        Some(format_hover_text(ptr, self.settings.weight_unit));
                                 }
                             }
                             plot_ui.points(weight_reps_scatter(
@@ -1625,6 +1751,7 @@ impl MyApp {
                     };
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut line_points: Vec<[f64; 2]> = Vec::new();
+                    let mut pointer = None;
                     let mut highlight: Option<[f64; 2]> = None;
                     ui.heading("RPE Over Time");
                     let resp = Plot::new("rpe_plot")
@@ -1643,7 +1770,7 @@ impl MyApp {
                         .y_axis_label("RPE")
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
-                            let pointer = plot_ui.pointer_coordinate();
+                            pointer = plot_ui.pointer_coordinate();
                             let ma = if self.settings.show_smoothed {
                                 Some(self.settings.ma_window)
                             } else {
@@ -1698,6 +1825,11 @@ impl MyApp {
                                 }
                             }
                         });
+                    if resp.response.clicked() {
+                        if let Some(p) = highlight {
+                            self.handle_plot_click(None, p);
+                        }
+                    }
 
                     if let Some(p) = highlight {
                         if resp.response.hovered() {
@@ -2709,6 +2841,61 @@ impl App for MyApp {
             self.table_filter = table_filter;
             self.sort_column = sort_column;
             self.sort_ascending = sort_ascending;
+        }
+
+        if self.show_point_details {
+            let mut open = self.show_point_details;
+            let entries = self.point_entries.clone();
+            egui::Window::new("Entry Details")
+                .open(&mut open)
+                .vscroll(true)
+                .show(ctx, |ui| {
+                    if ui.button("Back").clicked() {
+                        self.show_point_details = false;
+                    }
+                    let row_height = ui.text_style_height(&egui::TextStyle::Body);
+                    egui_extras::TableBuilder::new(ui)
+                        .striped(true)
+                        .resizable(true)
+                        .column(egui_extras::Column::auto())
+                        .column(egui_extras::Column::auto())
+                        .column(egui_extras::Column::auto())
+                        .column(egui_extras::Column::auto())
+                        .header(row_height, |mut header| {
+                            header.col(|ui| {
+                                ui.label("Date");
+                            });
+                            header.col(|ui| {
+                                ui.label("Exercise");
+                            });
+                            header.col(|ui| {
+                                ui.label("Weight");
+                            });
+                            header.col(|ui| {
+                                ui.label("Reps");
+                            });
+                        })
+                        .body(|mut body| {
+                            for e in entries {
+                                body.row(row_height, |mut row| {
+                                    row.col(|ui| {
+                                        ui.label(&e.date);
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(&e.exercise);
+                                    });
+                                    row.col(|ui| {
+                                        let f = self.settings.weight_unit.factor();
+                                        ui.label(format!("{:.1}", e.weight.unwrap() * f));
+                                    });
+                                    row.col(|ui| {
+                                        ui.label(e.reps.unwrap().to_string());
+                                    });
+                                });
+                            }
+                        });
+                });
+            self.show_point_details = open;
         }
 
         if self.show_plot_window {

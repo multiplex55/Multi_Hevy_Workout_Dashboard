@@ -1,7 +1,7 @@
 use chrono::{Datelike, NaiveDate};
+use egui::epaint::Hsva;
 use egui::{Color32, Pos2, Sense, Shape, Stroke, Ui, Vec2};
 use egui_plot::{Bar, BarChart, HLine, Line, PlotPoints, PlotUi, Points, VLine};
-use egui::epaint::Hsva;
 
 use crate::body_parts::body_part_for;
 use crate::{
@@ -578,9 +578,7 @@ pub fn format_hover_text(pos: egui_plot::PlotPoint, unit: WeightUnit) -> String 
     let weight = pos.x;
     let reps = pos.y;
     let volume = weight * reps;
-    format!(
-        "Weight: {weight:.0} {unit_label}\nReps: {reps:.0}\nVolume: {volume:.0}"
-    )
+    format!("Weight: {weight:.0} {unit_label}\nReps: {reps:.0}\nVolume: {volume:.0}")
 }
 
 /// Build a bar chart of weekly set counts and a line for weekly volume.
