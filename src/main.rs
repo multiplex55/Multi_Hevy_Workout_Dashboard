@@ -7,13 +7,13 @@ use egui_extras::DatePickerButton;
 use egui_plot::{Legend, Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use chrono::{Local, NaiveDate};
+use chrono::{Local, NaiveDate, Utc};
 use log::info;
 use strsim::damerau_levenshtein;
 
@@ -292,6 +292,8 @@ struct Settings {
     #[serde(default)]
     hevy_api_key: Option<String>,
     #[serde(default)]
+    last_sync: Option<String>,
+    #[serde(default)]
     check_prs: bool,
     github_repo: Option<String>,
     last_pr: Option<u64>,
@@ -403,6 +405,7 @@ impl Default for Settings {
             auto_load_last: true,
             last_file: None,
             hevy_api_key: None,
+            last_sync: None,
             check_prs: false,
             github_repo: None,
             last_pr: None,
@@ -640,11 +643,19 @@ impl MyApp {
     fn sync_from_hevy(&mut self) {
         if let Some(ref key) = self.settings.hevy_api_key {
             if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).save_file() {
-                match sync::fetch_latest_workouts(key) {
+                match sync::fetch_latest_workouts(key, self.settings.last_sync.as_deref()) {
                     Ok(mut new_entries) => {
+                        let existing: HashSet<String> = self
+                            .workouts
+                            .iter()
+                            .map(|e| e.raw.start_time.clone())
+                            .collect();
+                        new_entries.retain(|e| !existing.contains(&e.raw.start_time));
+
                         if let Err(e) = save_entries_csv(&path, &new_entries) {
                             log::error!("Failed to save sync data: {e}");
                         }
+
                         self.workouts.append(&mut new_entries);
                         self.stats = compute_stats(
                             &self.workouts,
@@ -654,6 +665,10 @@ impl MyApp {
                         self.update_filter_values();
                         self.last_loaded =
                             path.file_name().map(|f| f.to_string_lossy().to_string());
+
+                        self.settings.last_sync = Some(Utc::now().to_rfc3339());
+                        self.settings.save();
+
                         self.toast_start = Some(Instant::now());
                     }
                     Err(e) => {
