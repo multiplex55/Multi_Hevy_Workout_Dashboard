@@ -292,6 +292,15 @@ fn slope(points: &[(f32, f32)]) -> f32 {
     if den == 0.0 { 0.0 } else { num / den }
 }
 
+/// Project a future value using a pre-computed slope.
+///
+/// `current` is the latest known value and `slope` represents the change per
+/// month. The function returns the projected value `current + slope *
+/// months_ahead`. When `slope` is `None` the result is also `None`.
+pub fn linear_projection(current: f32, slope: Option<f32>, months_ahead: f32) -> Option<f32> {
+    slope.map(|m| current + m * months_ahead)
+}
+
 /// Format a user facing message after successfully loading a CSV file.
 ///
 /// The returned string includes the number of parsed entries and the file name
@@ -500,6 +509,12 @@ mod tests {
     fn test_format_load_message() {
         let msg = format_load_message(10, "workouts.csv");
         assert_eq!(msg, "Loaded 10 entries from workouts.csv");
+    }
+
+    #[test]
+    fn test_linear_projection() {
+        assert_eq!(linear_projection(100.0, Some(2.0), 6.0), Some(112.0));
+        assert_eq!(linear_projection(100.0, None, 6.0), None);
     }
 
     #[test]
