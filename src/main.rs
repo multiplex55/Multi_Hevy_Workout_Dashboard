@@ -23,8 +23,8 @@ mod plotting;
 use plotting::{
     HistogramMetric, OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis,
     aggregated_volume_points, body_part_distribution, body_part_volume_line,
-    body_part_volume_trend, estimated_1rm_line, exercise_volume_line, histogram,
-    rpe_over_time_line, sets_per_day_bar, training_volume_line, trend_line_points,
+    body_part_volume_trend, estimated_1rm_line, exercise_volume_line, forecast_line_points,
+    histogram, rpe_over_time_line, sets_per_day_bar, training_volume_line, trend_line_points,
     unique_exercises, weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
 };
 mod capture;
@@ -240,6 +240,10 @@ struct Settings {
     show_weight_trend: bool,
     #[serde(default)]
     show_volume_trend: bool,
+    #[serde(default)]
+    show_weight_forecast: bool,
+    #[serde(default)]
+    show_volume_forecast: bool,
     show_smoothed: bool,
     ma_window: usize,
     smoothing_method: SmoothingMethod,
@@ -354,6 +358,8 @@ impl Default for Settings {
             highlight_max: true,
             show_weight_trend: false,
             show_volume_trend: false,
+            show_weight_forecast: false,
+            show_volume_forecast: false,
             show_smoothed: false,
             smoothing_method: SmoothingMethod::SimpleMA,
             ma_window: 5,
@@ -838,6 +844,12 @@ impl MyApp {
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.vertical(|ui| {
+                let stats_map = analysis::aggregate_exercise_stats(
+                    filtered,
+                    self.settings.one_rm_formula,
+                    self.settings.start_date,
+                    self.settings.end_date,
+                );
                 if self.settings.show_weight {
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
@@ -861,6 +873,7 @@ impl MyApp {
                             } else {
                                 None
                             };
+                            let mut ex_idx = 0usize;
                             for lw in weight_over_time_line(
                                 filtered,
                                 sel,
@@ -876,12 +889,36 @@ impl MyApp {
                                     all_points.push(*p);
                                 }
                                 plot_ui.line(lw.line);
-                                if self.settings.show_weight_trend && lw.max_point.is_some() {
-                                    let trend = trend_line_points(&lw.points);
-                                    if trend.len() == 2 {
-                                        plot_ui
-                                            .line(Line::new(PlotPoints::from(trend)).name("Trend"));
+                                if lw.max_point.is_some() {
+                                    if self.settings.show_weight_trend {
+                                        let trend = trend_line_points(&lw.points);
+                                        if trend.len() == 2 {
+                                            plot_ui.line(
+                                                Line::new(PlotPoints::from(trend)).name("Trend"),
+                                            );
+                                        }
                                     }
+                                    if self.settings.show_weight_forecast {
+                                        if let Some(ex) = sel.get(ex_idx) {
+                                            if let Some(s) =
+                                                stats_map.get(ex).and_then(|st| st.weight_trend)
+                                            {
+                                                let forecast = forecast_line_points(
+                                                    &lw.points,
+                                                    s as f64,
+                                                    6.0,
+                                                    self.settings.x_axis,
+                                                );
+                                                if forecast.len() == 2 {
+                                                    plot_ui.line(
+                                                        Line::new(PlotPoints::from(forecast))
+                                                            .name("Forecast"),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                    ex_idx += 1;
                                 }
                                 if self.settings.highlight_max {
                                     if let (Some(p), Some(label)) =
@@ -1051,6 +1088,10 @@ impl MyApp {
                 }
 
                 if self.settings.show_volume {
+                    let total_slope: f32 = sel
+                        .iter()
+                        .filter_map(|ex| stats_map.get(ex).and_then(|s| s.volume_trend))
+                        .sum();
                     let mut all_points: Vec<[f64; 2]> = Vec::new();
                     let mut highlight: Option<[f64; 2]> = None;
                     let resp = Plot::new("volume_plot")
@@ -1101,6 +1142,19 @@ impl MyApp {
                                 let trend = trend_line_points(&raw_points);
                                 if trend.len() == 2 {
                                     plot_ui.line(Line::new(PlotPoints::from(trend)).name("Trend"));
+                                }
+                            }
+                            if self.settings.show_volume_forecast && raw_points.len() > 1 {
+                                let forecast = forecast_line_points(
+                                    &raw_points,
+                                    total_slope as f64,
+                                    6.0,
+                                    self.settings.x_axis,
+                                );
+                                if forecast.len() == 2 {
+                                    plot_ui.line(
+                                        Line::new(PlotPoints::from(forecast)).name("Forecast"),
+                                    );
                                 }
                             }
                             if self.settings.volume_aggregation != VolumeAggregation::Daily {
@@ -2653,8 +2707,8 @@ impl App for MyApp {
 
                                     if ui
                                         .checkbox(
-                                            &mut self.settings.show_smoothed,
-                                            "Show moving average",
+                                            &mut self.settings.show_weight_forecast,
+                                            "Show Weight Forecast",
                                         )
                                         .changed()
                                     {
@@ -2662,8 +2716,28 @@ impl App for MyApp {
                                     }
                                     if ui
                                         .checkbox(
+                                            &mut self.settings.show_smoothed,
+                                            "Show moving average",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.end_row();
+
+                                    if ui
+                                        .checkbox(
                                             &mut self.settings.show_volume_trend,
                                             "Show Volume Trend",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    if ui
+                                        .checkbox(
+                                            &mut self.settings.show_volume_forecast,
+                                            "Show Volume Forecast",
                                         )
                                         .changed()
                                     {
@@ -3478,6 +3552,8 @@ mod tests {
         s.show_rpe_trend = true;
         s.show_weight_trend = true;
         s.show_volume_trend = true;
+        s.show_weight_forecast = true;
+        s.show_volume_forecast = true;
         s.show_smoothed = true;
         s.ma_window = 3;
         s.smoothing_method = SmoothingMethod::EMA;

@@ -4,7 +4,9 @@ use egui_plot::{Bar, BarChart, Line, PlotPoints, Points};
 use crate::body_parts::body_part_for;
 use crate::{
     WeightUnit, WorkoutEntry,
-    analysis::{WeeklySummary, aggregate_rep_counts, aggregate_sets_by_body_part},
+    analysis::{
+        WeeklySummary, aggregate_rep_counts, aggregate_sets_by_body_part, linear_projection,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -351,9 +353,7 @@ pub fn histogram(
             if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                 let val = match metric {
                     HistogramMetric::Weight { .. } => Some(e.weight as f64 * f),
-                    HistogramMetric::Volume { .. } => {
-                        Some(e.weight as f64 * f * e.reps as f64)
-                    }
+                    HistogramMetric::Volume { .. } => Some(e.weight as f64 * f * e.reps as f64),
                     HistogramMetric::Rpe { .. } => e.raw.rpe.map(|r| r as f64),
                     HistogramMetric::Reps { .. } => Some(e.reps as f64),
                 };
@@ -669,6 +669,40 @@ pub fn trend_line_points(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
     trend_line_points_from_slope(points, slope)
 }
 
+/// Generate a forecast line extending `months_ahead` months beyond the last
+/// data point using a known slope.
+///
+/// The provided `slope_per_month` should represent the change in the y-value
+/// for each month. The returned vector contains two points: the last data point
+/// and the projected future point. When `XAxis::Date` is used the projection
+/// assumes 30 days per month when extending the x-value.
+pub fn forecast_line_points(
+    points: &[[f64; 2]],
+    slope_per_month: f64,
+    months_ahead: f64,
+    x_axis: XAxis,
+) -> Vec<[f64; 2]> {
+    if points.is_empty() {
+        return Vec::new();
+    }
+    let last = points[points.len() - 1];
+    if let Some(y) = linear_projection(
+        last[1] as f32,
+        Some(slope_per_month as f32),
+        months_ahead as f32,
+    )
+    .map(|v| v as f64)
+    {
+        let x = match x_axis {
+            XAxis::Date => last[0] + months_ahead * 30.0,
+            XAxis::WorkoutIndex => last[0] + months_ahead,
+        };
+        vec![last, [x, y]]
+    } else {
+        Vec::new()
+    }
+}
+
 /// Create a line plot of total training volume per day.
 ///
 /// Training volume is calculated as `weight * reps` for each set. Only entries
@@ -873,9 +907,7 @@ pub fn body_part_volume_trend(
         }
         let trend = trend_line_points(&points);
         if trend.len() == 2 {
-            lines.push(
-                Line::new(PlotPoints::from(trend)).name(format!("{part} Trend")),
-            );
+            lines.push(Line::new(PlotPoints::from(trend)).name(format!("{part} Trend")));
         }
     }
     lines
@@ -1070,6 +1102,13 @@ mod tests {
         // slope is 2.0 for this perfectly linear data
         let trend = trend_line_points_from_slope(&pts, 2.0);
         assert_eq!(trend, vec![[0.0, 1.0], [2.0, 5.0]]);
+    }
+
+    #[test]
+    fn test_forecast_line_points() {
+        let pts = vec![[0.0, 1.0], [30.0, 3.0]];
+        let forecast = forecast_line_points(&pts, 1.0, 2.0, XAxis::Date);
+        assert_eq!(forecast, vec![[30.0, 3.0], [90.0, 5.0]]);
     }
 
     fn line_points(line: Line) -> Vec<[f64; 2]> {
