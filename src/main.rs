@@ -34,6 +34,8 @@ use export::{
     save_entries_csv, save_entries_json, save_prs_csv, save_prs_json, save_stats_csv,
     save_stats_json,
 };
+mod report;
+use report::export_html_report;
 mod body_parts;
 use body_parts::ExerciseType;
 mod exercise_mapping;
@@ -1734,6 +1736,30 @@ impl App for MyApp {
                                         log::error!("Failed to export entries: {e}");
                                     }
                                 }
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button("Export Report").clicked() {
+                        if let Some(path) = FileDialog::new()
+                            .add_filter("HTML", &["html"])
+                            .save_file()
+                        {
+                            let prs_map = analysis::personal_records(
+                                &self.workouts,
+                                self.settings.one_rm_formula,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            );
+                            let prs: Vec<_> = prs_map.into_iter().collect();
+                            if let Err(e) = export_html_report(
+                                &path,
+                                &self.workouts,
+                                &self.stats,
+                                &prs,
+                                self.settings.weight_unit,
+                            ) {
+                                log::error!("Failed to export report: {e}");
                             }
                         }
                         ui.close_menu();
