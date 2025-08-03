@@ -1,6 +1,6 @@
 use chrono::{Datelike, NaiveDate};
 use egui::Color32;
-use egui_plot::{Bar, BarChart, Line, PlotPoints, Points};
+use egui_plot::{Bar, BarChart, HLine, Line, PlotPoints, PlotUi, Points, VLine};
 
 use crate::body_parts::body_part_for;
 use crate::{
@@ -463,6 +463,31 @@ pub fn weight_reps_scatter(
         }
     }
     Points::new(pts).name("Weight vs Reps")
+}
+
+/// Draw a crosshair at the provided plot coordinates.
+///
+/// This is used to highlight the current hover position when exploring
+/// scatter plots. The crosshair is drawn using light gray dashed lines so it
+/// does not overwhelm the underlying data.
+pub fn draw_crosshair(plot_ui: &mut PlotUi, pos: egui_plot::PlotPoint) {
+    plot_ui.vline(VLine::new(pos.x).color(Color32::LIGHT_GRAY));
+    plot_ui.hline(HLine::new(pos.y).color(Color32::LIGHT_GRAY));
+}
+
+/// Format a tooltip string showing weight, reps, and training volume for the
+/// provided plot coordinates.
+pub fn format_hover_text(pos: egui_plot::PlotPoint, unit: WeightUnit) -> String {
+    let unit_label = match unit {
+        WeightUnit::Kg => "kg",
+        WeightUnit::Lbs => "lbs",
+    };
+    let weight = pos.x;
+    let reps = pos.y;
+    let volume = weight * reps;
+    format!(
+        "Weight: {weight:.0} {unit_label}\nReps: {reps:.0}\nVolume: {volume:.0}"
+    )
 }
 
 /// Build a bar chart of weekly set counts and a line for weekly volume.

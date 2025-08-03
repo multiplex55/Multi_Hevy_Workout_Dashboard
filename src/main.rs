@@ -25,7 +25,8 @@ use plotting::{
     aggregated_volume_points, average_rpe_line, body_part_distribution, body_part_volume_line,
     body_part_volume_trend, estimated_1rm_line, exercise_volume_line, forecast_line_points,
     histogram, sets_per_day_bar, training_volume_line, trend_line_points, unique_exercises,
-    weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
+    weekly_summary_plot, weight_over_time_line, weight_reps_scatter, draw_crosshair,
+    format_hover_text,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -223,6 +224,8 @@ struct Settings {
     rpe_bin_size: f32,
     #[serde(default)]
     show_weight_reps_scatter: bool,
+    #[serde(default)]
+    show_crosshair: bool,
     show_volume: bool,
     /// Controls visibility of the RPE plot.
     ///
@@ -392,6 +395,7 @@ impl Default for Settings {
             show_rpe_histogram: false,
             rpe_bin_size: 1.0,
             show_weight_reps_scatter: false,
+            show_crosshair: false,
             show_volume: false,
             show_rpe: false,
             show_rpe_trend: false,
@@ -1555,6 +1559,7 @@ impl MyApp {
                         WeightUnit::Lbs => "lbs",
                     };
                     ui.heading("Weight vs Reps");
+                    let mut hover_text: Option<String> = None;
                     let resp = Plot::new("weight_reps_scatter_plot")
                         .width(self.settings.plot_width)
                         .height(self.settings.plot_height)
@@ -1571,6 +1576,12 @@ impl MyApp {
                         })
                         .legend(Legend::default())
                         .show(ui, |plot_ui| {
+                            if self.settings.show_crosshair {
+                                if let Some(ptr) = plot_ui.pointer_coordinate() {
+                                    draw_crosshair(plot_ui, ptr);
+                                    hover_text = Some(format_hover_text(ptr, self.settings.weight_unit));
+                                }
+                            }
                             plot_ui.points(weight_reps_scatter(
                                 filtered,
                                 sel,
@@ -1579,6 +1590,19 @@ impl MyApp {
                                 self.settings.weight_unit,
                             ));
                         });
+
+                    if let (Some(text), true) = (
+                        hover_text,
+                        resp.response.hovered() && self.settings.show_crosshair,
+                    ) {
+                        egui::show_tooltip_at_pointer(
+                            ctx,
+                            egui::Id::new("weight_reps_hover"),
+                            |ui| {
+                                ui.label(text);
+                            },
+                        );
+                    }
 
                     first_resp.get_or_insert(resp);
                 }
@@ -3196,6 +3220,18 @@ impl App for MyApp {
 
                                     if ui
                                         .checkbox(
+                                            &mut self.settings.show_crosshair,
+                                            "Show Crosshair Tooltip",
+                                        )
+                                        .changed()
+                                    {
+                                        self.settings_dirty = true;
+                                    }
+                                    ui.label("");
+                                    ui.end_row();
+
+                                    if ui
+                                        .checkbox(
                                             &mut self.settings.show_body_part_volume,
                                             "Show Volume by Body Part",
                                         )
@@ -4245,6 +4281,7 @@ mod tests {
         s.show_rpe_histogram = true;
         s.rpe_bin_size = 0.5;
         s.show_weight_reps_scatter = true;
+        s.show_crosshair = true;
         s.show_rpe = true;
         s.show_rpe_trend = true;
         s.show_weight_trend = true;
