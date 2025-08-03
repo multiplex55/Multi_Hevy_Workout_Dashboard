@@ -188,6 +188,10 @@ fn default_plot_height() -> f32 {
     200.0
 }
 
+fn default_panel_width() -> f32 {
+    200.0
+}
+
 /// Persistent configuration for user preferences and plot visibility.
 ///
 /// The values are serialized to a JSON file so choices like `show_rpe`
@@ -243,6 +247,12 @@ struct Settings {
     show_pr_window: bool,
     #[serde(default)]
     show_exercise_panel: bool,
+    #[serde(default = "default_panel_width")]
+    exercise_panel_width: f32,
+    #[serde(default)]
+    show_stats_panel: bool,
+    #[serde(default = "default_panel_width")]
+    stats_panel_width: f32,
     #[serde(default)]
     show_compare_window: bool,
     #[serde(default)]
@@ -393,6 +403,9 @@ impl Default for Settings {
             show_exercise_stats: false,
             show_pr_window: false,
             show_exercise_panel: true,
+            exercise_panel_width: default_panel_width(),
+            show_stats_panel: true,
+            stats_panel_width: default_panel_width(),
             show_compare_window: false,
             show_stats_window: false,
             show_mapping: false,
@@ -493,6 +506,7 @@ struct MyApp {
     show_exercise_stats: bool,
     show_pr_window: bool,
     show_exercise_panel: bool,
+    show_stats_panel: bool,
     show_about: bool,
     sort_column: SortColumn,
     sort_ascending: bool,
@@ -520,6 +534,7 @@ impl Default for MyApp {
         let show_exercise_stats = settings.show_exercise_stats;
         let show_pr_window = settings.show_pr_window;
         let show_exercise_panel = settings.show_exercise_panel;
+        let show_stats_panel = settings.show_stats_panel;
         let show_compare_window = settings.show_compare_window;
         let show_stats_window = settings.show_stats_window;
         let show_mapping = settings.show_mapping;
@@ -543,6 +558,7 @@ impl Default for MyApp {
             show_exercise_stats,
             show_pr_window,
             show_exercise_panel,
+            show_stats_panel,
             show_about: false,
             sort_column: SortColumn::Date,
             sort_ascending: true,
@@ -1757,6 +1773,7 @@ impl MyApp {
         self.settings.show_exercise_stats = self.show_exercise_stats;
         self.settings.show_pr_window = self.show_pr_window;
         self.settings.show_exercise_panel = self.show_exercise_panel;
+        self.settings.show_stats_panel = self.show_stats_panel;
     }
 }
 
@@ -2180,283 +2197,306 @@ impl App for MyApp {
                 }
             });
         });
-        egui::SidePanel::left("info_panel").show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                if self.workouts.is_empty() {
-                    ui.label("No CSV loaded");
-                    ui.label("Load a CSV to begin");
-                } else {
-                    ui.label(format!("Loaded {} entries", self.workouts.len()));
-                }
+        if self.show_stats_panel {
+            let panel = egui::SidePanel::left("stats_panel")
+                .resizable(true)
+                .default_width(self.settings.stats_panel_width)
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        if self.workouts.is_empty() {
+                            ui.label("No CSV loaded");
+                            ui.label("Load a CSV to begin");
+                        } else {
+                            ui.label(format!("Loaded {} entries", self.workouts.len()));
+                        }
 
-                ui.separator();
-                if self.selected_exercises.is_empty() {
-                    ui.label("No exercises selected");
-                    ui.label("Select exercises from the dropdown");
-                } else {
-                    ui.label(format!("Selected: {}", self.selected_exercises.join(", ")));
-                }
+                        ui.separator();
+                        if self.selected_exercises.is_empty() {
+                            ui.label("No exercises selected");
+                            ui.label("Select exercises from the dropdown");
+                        } else {
+                            ui.label(format!("Selected: {}", self.selected_exercises.join(", ")));
+                        }
 
-                ui.separator();
-                ui.collapsing("Available plots", |ui| {
-                    ui.label("• Weight over time");
-                    ui.label("• Estimated 1RM");
-                    ui.label("• Sets per day");
-                    ui.label("• Training volume");
-                    ui.label("• Volume by body part");
+                        ui.separator();
+                        ui.collapsing("Available plots", |ui| {
+                            ui.label("• Weight over time");
+                            ui.label("• Estimated 1RM");
+                            ui.label("• Sets per day");
+                            ui.label("• Training volume");
+                            ui.label("• Volume by body part");
+                        });
+                    });
                 });
-            });
-        });
+            let new_width = panel.response.rect.width();
+            if (self.settings.stats_panel_width - new_width).abs() > f32::EPSILON {
+                self.settings.stats_panel_width = new_width;
+                self.settings_dirty = true;
+            }
+        }
 
         if self.show_exercise_panel {
-            egui::SidePanel::right("exercise_panel").show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    if !self.workouts.is_empty() {
-                        ui.heading("Exercise Summary");
-                        ui.horizontal(|ui| {
-                            ui.label("Body part:");
-                            let prev = self.settings.summary_body_part_filter.clone();
-                            let parts = body_parts::primary_muscle_groups();
-                            egui::ComboBox::from_id_source("summary_body_part_filter")
-                                .selected_text(prev.as_deref().unwrap_or("All"))
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(
-                                        &mut self.settings.summary_body_part_filter,
-                                        None::<String>,
-                                        "All",
-                                    );
-                                    for p in parts {
+            let panel = egui::SidePanel::right("exercise_panel")
+                .resizable(true)
+                .default_width(self.settings.exercise_panel_width)
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        if !self.workouts.is_empty() {
+                            ui.heading("Exercise Summary");
+                            ui.horizontal(|ui| {
+                                ui.label("Body part:");
+                                let prev = self.settings.summary_body_part_filter.clone();
+                                let parts = body_parts::primary_muscle_groups();
+                                egui::ComboBox::from_id_source("summary_body_part_filter")
+                                    .selected_text(prev.as_deref().unwrap_or("All"))
+                                    .show_ui(ui, |ui| {
                                         ui.selectable_value(
                                             &mut self.settings.summary_body_part_filter,
-                                            Some(p.clone()),
-                                            &p,
+                                            None::<String>,
+                                            "All",
                                         );
-                                    }
-                                });
-                            if prev != self.settings.summary_body_part_filter {
-                                self.settings_dirty = true;
-                            }
-                        });
-                        let filtered = self.filtered_entries();
-                        let mut stats = analysis::aggregate_exercise_stats(
-                            &filtered,
-                            self.settings.one_rm_formula,
-                            self.settings.start_date,
-                            self.settings.end_date,
-                        )
-                        .into_iter()
-                        .collect::<Vec<_>>();
-                        MyApp::sort_summary_stats(
-                            &mut stats,
-                            self.summary_sort,
-                            self.summary_sort_ascending,
-                        );
-                        let mut summary_sort = self.summary_sort;
-                        let mut summary_sort_ascending = self.summary_sort_ascending;
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            egui::Grid::new("exercise_summary_grid")
-                                .striped(true)
-                                .show(ui, |ui| {
-                                    MyApp::summary_sort_button(
-                                        ui,
-                                        "Exercise",
-                                        SummarySort::Exercise,
-                                        &mut summary_sort,
-                                        &mut summary_sort_ascending,
-                                    );
-                                    MyApp::summary_sort_button(
-                                        ui,
-                                        "Sets",
-                                        SummarySort::Sets,
-                                        &mut summary_sort,
-                                        &mut summary_sort_ascending,
-                                    );
-                                    MyApp::summary_sort_button(
-                                        ui,
-                                        "Reps",
-                                        SummarySort::Reps,
-                                        &mut summary_sort,
-                                        &mut summary_sort_ascending,
-                                    );
-                                    MyApp::summary_sort_button(
-                                        ui,
-                                        "Volume",
-                                        SummarySort::Volume,
-                                        &mut summary_sort,
-                                        &mut summary_sort_ascending,
-                                    );
-                                    MyApp::summary_sort_button(
-                                        ui,
-                                        "Max Weight",
-                                        SummarySort::MaxWeight,
-                                        &mut summary_sort,
-                                        &mut summary_sort_ascending,
-                                    );
-                                    MyApp::summary_sort_button(
-                                        ui,
-                                        "Best 1RM",
-                                        SummarySort::Best1Rm,
-                                        &mut summary_sort,
-                                        &mut summary_sort_ascending,
-                                    );
-                                    ui.label("Weight Trend");
-                                    ui.label("Volume Trend");
-                                    ui.end_row();
-                                    let mut changed = false;
-                                    changed |= ui
-                                        .add(
-                                            egui::TextEdit::singleline(
-                                                &mut self.settings.summary_exercise_filter,
-                                            )
-                                            .desired_width(80.0),
-                                        )
-                                        .changed();
-                                    changed |= ui
-                                        .add(
-                                            egui::TextEdit::singleline(
-                                                &mut self.settings.summary_sets_filter,
-                                            )
-                                            .desired_width(60.0),
-                                        )
-                                        .changed();
-                                    changed |= ui
-                                        .add(
-                                            egui::TextEdit::singleline(
-                                                &mut self.settings.summary_reps_filter,
-                                            )
-                                            .desired_width(60.0),
-                                        )
-                                        .changed();
-                                    changed |= ui
-                                        .add(
-                                            egui::TextEdit::singleline(
-                                                &mut self.settings.summary_volume_filter,
-                                            )
-                                            .desired_width(80.0),
-                                        )
-                                        .changed();
-                                    changed |= ui
-                                        .add(
-                                            egui::TextEdit::singleline(
-                                                &mut self.settings.summary_max_weight_filter,
-                                            )
-                                            .desired_width(80.0),
-                                        )
-                                        .changed();
-                                    changed |= ui
-                                        .add(
-                                            egui::TextEdit::singleline(
-                                                &mut self.settings.summary_best_1rm_filter,
-                                            )
-                                            .desired_width(80.0),
-                                        )
-                                        .changed();
-                                    changed |= ui
-                                        .add(
-                                            egui::TextEdit::singleline(
-                                                &mut self.settings.summary_weight_trend_filter,
-                                            )
-                                            .desired_width(80.0),
-                                        )
-                                        .changed();
-                                    changed |= ui
-                                        .add(
-                                            egui::TextEdit::singleline(
-                                                &mut self.settings.summary_volume_trend_filter,
-                                            )
-                                            .desired_width(80.0),
-                                        )
-                                        .changed();
-                                    ui.end_row();
-                                    if changed {
-                                        self.settings_dirty = true;
-                                    }
-                                    MyApp::sort_summary_stats(
-                                        &mut stats,
-                                        summary_sort,
-                                        summary_sort_ascending,
-                                    );
-                                    let f = self.settings.weight_unit.factor();
-                                    if let Some(ref bp) = self.settings.summary_body_part_filter {
-                                        stats.retain(|(ex, _)| {
-                                            body_parts::body_part_for(ex)
-                                                .map(|p| p == *bp)
-                                                .unwrap_or(false)
-                                        });
-                                    }
-                                    if !self.settings.summary_exercise_filter.is_empty() {
-                                        let q =
-                                            self.settings.summary_exercise_filter.to_lowercase();
-                                        stats.retain(|(ex, _)| ex.to_lowercase().contains(&q));
-                                    }
-                                    if let Ok(v) =
-                                        self.settings.summary_sets_filter.parse::<usize>()
-                                    {
-                                        stats.retain(|(_, s)| s.total_sets >= v);
-                                    }
-                                    if let Ok(v) = self.settings.summary_reps_filter.parse::<u32>()
-                                    {
-                                        stats.retain(|(_, s)| s.total_reps >= v);
-                                    }
-                                    if let Ok(v) =
-                                        self.settings.summary_volume_filter.parse::<f32>()
-                                    {
-                                        stats.retain(|(_, s)| s.total_volume >= v / f);
-                                    }
-                                    if let Ok(v) =
-                                        self.settings.summary_max_weight_filter.parse::<f32>()
-                                    {
-                                        stats.retain(|(_, s)| {
-                                            s.max_weight.map(|w| w >= v / f).unwrap_or(false)
-                                        });
-                                    }
-                                    if let Ok(v) =
-                                        self.settings.summary_best_1rm_filter.parse::<f32>()
-                                    {
-                                        stats.retain(|(_, s)| {
-                                            s.best_est_1rm.map(|w| w >= v / f).unwrap_or(false)
-                                        });
-                                    }
-                                    if let Ok(v) =
-                                        self.settings.summary_weight_trend_filter.parse::<f32>()
-                                    {
-                                        stats.retain(|(_, s)| {
-                                            s.weight_trend.map(|w| w >= v / f).unwrap_or(false)
-                                        });
-                                    }
-                                    if let Ok(v) =
-                                        self.settings.summary_volume_trend_filter.parse::<f32>()
-                                    {
-                                        stats.retain(|(_, s)| {
-                                            s.volume_trend.map(|w| w >= v / f).unwrap_or(false)
-                                        });
-                                    }
-                                    for (ex, s) in stats {
-                                        ui.label(ex);
-                                        ui.label(s.total_sets.to_string());
-                                        ui.label(s.total_reps.to_string());
-                                        ui.label(format!("{:.1}", s.total_volume * f));
-                                        if let Some(w) = s.max_weight {
-                                            ui.label(format!("{:.1}", w * f));
-                                        } else {
-                                            ui.label("-");
+                                        for p in parts {
+                                            ui.selectable_value(
+                                                &mut self.settings.summary_body_part_filter,
+                                                Some(p.clone()),
+                                                &p,
+                                            );
                                         }
-                                        if let Some(b) = s.best_est_1rm {
-                                            ui.label(format!("{:.1}", b * f));
-                                        } else {
-                                            ui.label("-");
-                                        }
-                                        ui.label(MyApp::trend_value(s.weight_trend, f));
-                                        ui.label(MyApp::trend_value(s.volume_trend, f));
+                                    });
+                                if prev != self.settings.summary_body_part_filter {
+                                    self.settings_dirty = true;
+                                }
+                            });
+                            let filtered = self.filtered_entries();
+                            let mut stats = analysis::aggregate_exercise_stats(
+                                &filtered,
+                                self.settings.one_rm_formula,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            )
+                            .into_iter()
+                            .collect::<Vec<_>>();
+                            MyApp::sort_summary_stats(
+                                &mut stats,
+                                self.summary_sort,
+                                self.summary_sort_ascending,
+                            );
+                            let mut summary_sort = self.summary_sort;
+                            let mut summary_sort_ascending = self.summary_sort_ascending;
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                egui::Grid::new("exercise_summary_grid").striped(true).show(
+                                    ui,
+                                    |ui| {
+                                        MyApp::summary_sort_button(
+                                            ui,
+                                            "Exercise",
+                                            SummarySort::Exercise,
+                                            &mut summary_sort,
+                                            &mut summary_sort_ascending,
+                                        );
+                                        MyApp::summary_sort_button(
+                                            ui,
+                                            "Sets",
+                                            SummarySort::Sets,
+                                            &mut summary_sort,
+                                            &mut summary_sort_ascending,
+                                        );
+                                        MyApp::summary_sort_button(
+                                            ui,
+                                            "Reps",
+                                            SummarySort::Reps,
+                                            &mut summary_sort,
+                                            &mut summary_sort_ascending,
+                                        );
+                                        MyApp::summary_sort_button(
+                                            ui,
+                                            "Volume",
+                                            SummarySort::Volume,
+                                            &mut summary_sort,
+                                            &mut summary_sort_ascending,
+                                        );
+                                        MyApp::summary_sort_button(
+                                            ui,
+                                            "Max Weight",
+                                            SummarySort::MaxWeight,
+                                            &mut summary_sort,
+                                            &mut summary_sort_ascending,
+                                        );
+                                        MyApp::summary_sort_button(
+                                            ui,
+                                            "Best 1RM",
+                                            SummarySort::Best1Rm,
+                                            &mut summary_sort,
+                                            &mut summary_sort_ascending,
+                                        );
+                                        ui.label("Weight Trend");
+                                        ui.label("Volume Trend");
                                         ui.end_row();
-                                    }
-                                });
-                        });
-                        self.summary_sort = summary_sort;
-                        self.summary_sort_ascending = summary_sort_ascending;
-                    }
+                                        let mut changed = false;
+                                        changed |= ui
+                                            .add(
+                                                egui::TextEdit::singleline(
+                                                    &mut self.settings.summary_exercise_filter,
+                                                )
+                                                .desired_width(80.0),
+                                            )
+                                            .changed();
+                                        changed |= ui
+                                            .add(
+                                                egui::TextEdit::singleline(
+                                                    &mut self.settings.summary_sets_filter,
+                                                )
+                                                .desired_width(60.0),
+                                            )
+                                            .changed();
+                                        changed |= ui
+                                            .add(
+                                                egui::TextEdit::singleline(
+                                                    &mut self.settings.summary_reps_filter,
+                                                )
+                                                .desired_width(60.0),
+                                            )
+                                            .changed();
+                                        changed |= ui
+                                            .add(
+                                                egui::TextEdit::singleline(
+                                                    &mut self.settings.summary_volume_filter,
+                                                )
+                                                .desired_width(80.0),
+                                            )
+                                            .changed();
+                                        changed |= ui
+                                            .add(
+                                                egui::TextEdit::singleline(
+                                                    &mut self.settings.summary_max_weight_filter,
+                                                )
+                                                .desired_width(80.0),
+                                            )
+                                            .changed();
+                                        changed |= ui
+                                            .add(
+                                                egui::TextEdit::singleline(
+                                                    &mut self.settings.summary_best_1rm_filter,
+                                                )
+                                                .desired_width(80.0),
+                                            )
+                                            .changed();
+                                        changed |= ui
+                                            .add(
+                                                egui::TextEdit::singleline(
+                                                    &mut self.settings.summary_weight_trend_filter,
+                                                )
+                                                .desired_width(80.0),
+                                            )
+                                            .changed();
+                                        changed |= ui
+                                            .add(
+                                                egui::TextEdit::singleline(
+                                                    &mut self.settings.summary_volume_trend_filter,
+                                                )
+                                                .desired_width(80.0),
+                                            )
+                                            .changed();
+                                        ui.end_row();
+                                        if changed {
+                                            self.settings_dirty = true;
+                                        }
+                                        MyApp::sort_summary_stats(
+                                            &mut stats,
+                                            summary_sort,
+                                            summary_sort_ascending,
+                                        );
+                                        let f = self.settings.weight_unit.factor();
+                                        if let Some(ref bp) = self.settings.summary_body_part_filter
+                                        {
+                                            stats.retain(|(ex, _)| {
+                                                body_parts::body_part_for(ex)
+                                                    .map(|p| p == *bp)
+                                                    .unwrap_or(false)
+                                            });
+                                        }
+                                        if !self.settings.summary_exercise_filter.is_empty() {
+                                            let q = self
+                                                .settings
+                                                .summary_exercise_filter
+                                                .to_lowercase();
+                                            stats.retain(|(ex, _)| ex.to_lowercase().contains(&q));
+                                        }
+                                        if let Ok(v) =
+                                            self.settings.summary_sets_filter.parse::<usize>()
+                                        {
+                                            stats.retain(|(_, s)| s.total_sets >= v);
+                                        }
+                                        if let Ok(v) =
+                                            self.settings.summary_reps_filter.parse::<u32>()
+                                        {
+                                            stats.retain(|(_, s)| s.total_reps >= v);
+                                        }
+                                        if let Ok(v) =
+                                            self.settings.summary_volume_filter.parse::<f32>()
+                                        {
+                                            stats.retain(|(_, s)| s.total_volume >= v / f);
+                                        }
+                                        if let Ok(v) =
+                                            self.settings.summary_max_weight_filter.parse::<f32>()
+                                        {
+                                            stats.retain(|(_, s)| {
+                                                s.max_weight.map(|w| w >= v / f).unwrap_or(false)
+                                            });
+                                        }
+                                        if let Ok(v) =
+                                            self.settings.summary_best_1rm_filter.parse::<f32>()
+                                        {
+                                            stats.retain(|(_, s)| {
+                                                s.best_est_1rm.map(|w| w >= v / f).unwrap_or(false)
+                                            });
+                                        }
+                                        if let Ok(v) =
+                                            self.settings.summary_weight_trend_filter.parse::<f32>()
+                                        {
+                                            stats.retain(|(_, s)| {
+                                                s.weight_trend.map(|w| w >= v / f).unwrap_or(false)
+                                            });
+                                        }
+                                        if let Ok(v) =
+                                            self.settings.summary_volume_trend_filter.parse::<f32>()
+                                        {
+                                            stats.retain(|(_, s)| {
+                                                s.volume_trend.map(|w| w >= v / f).unwrap_or(false)
+                                            });
+                                        }
+                                        for (ex, s) in stats {
+                                            ui.label(ex);
+                                            ui.label(s.total_sets.to_string());
+                                            ui.label(s.total_reps.to_string());
+                                            ui.label(format!("{:.1}", s.total_volume * f));
+                                            if let Some(w) = s.max_weight {
+                                                ui.label(format!("{:.1}", w * f));
+                                            } else {
+                                                ui.label("-");
+                                            }
+                                            if let Some(b) = s.best_est_1rm {
+                                                ui.label(format!("{:.1}", b * f));
+                                            } else {
+                                                ui.label("-");
+                                            }
+                                            ui.label(MyApp::trend_value(s.weight_trend, f));
+                                            ui.label(MyApp::trend_value(s.volume_trend, f));
+                                            ui.end_row();
+                                        }
+                                    },
+                                );
+                            });
+                            self.summary_sort = summary_sort;
+                            self.summary_sort_ascending = summary_sort_ascending;
+                        }
+                    });
                 });
-            });
+            let new_width = panel.response.rect.width();
+            if (self.settings.exercise_panel_width - new_width).abs() > f32::EPSILON {
+                self.settings.exercise_panel_width = new_width;
+                self.settings_dirty = true;
+            }
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -2509,6 +2549,11 @@ impl App for MyApp {
                     if ui.button("Exercise Panel").clicked() {
                         self.show_exercise_panel = !self.show_exercise_panel;
                         self.settings.show_exercise_panel = self.show_exercise_panel;
+                        self.settings_dirty = true;
+                    }
+                    if ui.button("Stats Panel").clicked() {
+                        self.show_stats_panel = !self.show_stats_panel;
+                        self.settings.show_stats_panel = self.show_stats_panel;
                         self.settings_dirty = true;
                     }
                 }
@@ -4238,6 +4283,9 @@ mod tests {
         s.show_exercise_stats = true;
         s.show_pr_window = true;
         s.show_exercise_panel = false;
+        s.exercise_panel_width = 250.0;
+        s.show_stats_panel = false;
+        s.stats_panel_width = 150.0;
         s.show_compare_window = true;
         s.show_stats_window = true;
         s.show_mapping = true;
