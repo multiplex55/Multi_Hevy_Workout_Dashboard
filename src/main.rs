@@ -309,6 +309,24 @@ struct Settings {
     sort_ascending: bool,
     summary_sort: SummarySort,
     summary_sort_ascending: bool,
+    #[serde(default)]
+    summary_body_part_filter: Option<String>,
+    #[serde(default)]
+    summary_exercise_filter: String,
+    #[serde(default)]
+    summary_sets_filter: String,
+    #[serde(default)]
+    summary_reps_filter: String,
+    #[serde(default)]
+    summary_volume_filter: String,
+    #[serde(default)]
+    summary_max_weight_filter: String,
+    #[serde(default)]
+    summary_best_1rm_filter: String,
+    #[serde(default)]
+    summary_weight_trend_filter: String,
+    #[serde(default)]
+    summary_volume_trend_filter: String,
 }
 
 impl Settings {
@@ -424,6 +442,15 @@ impl Default for Settings {
             sort_ascending: true,
             summary_sort: SummarySort::Exercise,
             summary_sort_ascending: true,
+            summary_body_part_filter: None,
+            summary_exercise_filter: String::new(),
+            summary_sets_filter: String::new(),
+            summary_reps_filter: String::new(),
+            summary_volume_filter: String::new(),
+            summary_max_weight_filter: String::new(),
+            summary_best_1rm_filter: String::new(),
+            summary_weight_trend_filter: String::new(),
+            summary_volume_trend_filter: String::new(),
         }
     }
 }
@@ -2163,6 +2190,30 @@ impl App for MyApp {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     if !self.workouts.is_empty() {
                         ui.heading("Exercise Summary");
+                        ui.horizontal(|ui| {
+                            ui.label("Body part:");
+                            let prev = self.settings.summary_body_part_filter.clone();
+                            let parts = body_parts::primary_muscle_groups();
+                            egui::ComboBox::from_id_source("summary_body_part_filter")
+                                .selected_text(prev.as_deref().unwrap_or("All"))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.settings.summary_body_part_filter,
+                                        None::<String>,
+                                        "All",
+                                    );
+                                    for p in parts {
+                                        ui.selectable_value(
+                                            &mut self.settings.summary_body_part_filter,
+                                            Some(p.clone()),
+                                            &p,
+                                        );
+                                    }
+                                });
+                            if prev != self.settings.summary_body_part_filter {
+                                self.settings_dirty = true;
+                            }
+                        });
                         let filtered = self.filtered_entries();
                         let mut stats = analysis::aggregate_exercise_stats(
                             &filtered,
@@ -2228,16 +2279,139 @@ impl App for MyApp {
                                     ui.label("Weight Trend");
                                     ui.label("Volume Trend");
                                     ui.end_row();
+                                    let mut changed = false;
+                                    changed |= ui
+                                        .add(
+                                            egui::TextEdit::singleline(
+                                                &mut self.settings.summary_exercise_filter,
+                                            )
+                                            .desired_width(80.0),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::TextEdit::singleline(
+                                                &mut self.settings.summary_sets_filter,
+                                            )
+                                            .desired_width(60.0),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::TextEdit::singleline(
+                                                &mut self.settings.summary_reps_filter,
+                                            )
+                                            .desired_width(60.0),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::TextEdit::singleline(
+                                                &mut self.settings.summary_volume_filter,
+                                            )
+                                            .desired_width(80.0),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::TextEdit::singleline(
+                                                &mut self.settings.summary_max_weight_filter,
+                                            )
+                                            .desired_width(80.0),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::TextEdit::singleline(
+                                                &mut self.settings.summary_best_1rm_filter,
+                                            )
+                                            .desired_width(80.0),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::TextEdit::singleline(
+                                                &mut self.settings.summary_weight_trend_filter,
+                                            )
+                                            .desired_width(80.0),
+                                        )
+                                        .changed();
+                                    changed |= ui
+                                        .add(
+                                            egui::TextEdit::singleline(
+                                                &mut self.settings.summary_volume_trend_filter,
+                                            )
+                                            .desired_width(80.0),
+                                        )
+                                        .changed();
+                                    ui.end_row();
+                                    if changed {
+                                        self.settings_dirty = true;
+                                    }
                                     MyApp::sort_summary_stats(
                                         &mut stats,
                                         summary_sort,
                                         summary_sort_ascending,
                                     );
+                                    let f = self.settings.weight_unit.factor();
+                                    if let Some(ref bp) = self.settings.summary_body_part_filter {
+                                        stats.retain(|(ex, _)| {
+                                            body_parts::body_part_for(ex)
+                                                .map(|p| p == *bp)
+                                                .unwrap_or(false)
+                                        });
+                                    }
+                                    if !self.settings.summary_exercise_filter.is_empty() {
+                                        let q =
+                                            self.settings.summary_exercise_filter.to_lowercase();
+                                        stats.retain(|(ex, _)| ex.to_lowercase().contains(&q));
+                                    }
+                                    if let Ok(v) =
+                                        self.settings.summary_sets_filter.parse::<usize>()
+                                    {
+                                        stats.retain(|(_, s)| s.total_sets >= v);
+                                    }
+                                    if let Ok(v) = self.settings.summary_reps_filter.parse::<u32>()
+                                    {
+                                        stats.retain(|(_, s)| s.total_reps >= v);
+                                    }
+                                    if let Ok(v) =
+                                        self.settings.summary_volume_filter.parse::<f32>()
+                                    {
+                                        stats.retain(|(_, s)| s.total_volume >= v / f);
+                                    }
+                                    if let Ok(v) =
+                                        self.settings.summary_max_weight_filter.parse::<f32>()
+                                    {
+                                        stats.retain(|(_, s)| {
+                                            s.max_weight.map(|w| w >= v / f).unwrap_or(false)
+                                        });
+                                    }
+                                    if let Ok(v) =
+                                        self.settings.summary_best_1rm_filter.parse::<f32>()
+                                    {
+                                        stats.retain(|(_, s)| {
+                                            s.best_est_1rm.map(|w| w >= v / f).unwrap_or(false)
+                                        });
+                                    }
+                                    if let Ok(v) =
+                                        self.settings.summary_weight_trend_filter.parse::<f32>()
+                                    {
+                                        stats.retain(|(_, s)| {
+                                            s.weight_trend.map(|w| w >= v / f).unwrap_or(false)
+                                        });
+                                    }
+                                    if let Ok(v) =
+                                        self.settings.summary_volume_trend_filter.parse::<f32>()
+                                    {
+                                        stats.retain(|(_, s)| {
+                                            s.volume_trend.map(|w| w >= v / f).unwrap_or(false)
+                                        });
+                                    }
                                     for (ex, s) in stats {
                                         ui.label(ex);
                                         ui.label(s.total_sets.to_string());
                                         ui.label(s.total_reps.to_string());
-                                        let f = self.settings.weight_unit.factor();
                                         ui.label(format!("{:.1}", s.total_volume * f));
                                         if let Some(w) = s.max_weight {
                                             ui.label(format!("{:.1}", w * f));
@@ -4032,6 +4206,15 @@ mod tests {
         s.sort_ascending = false;
         s.summary_sort = SummarySort::Volume;
         s.summary_sort_ascending = false;
+        s.summary_body_part_filter = Some("Back".into());
+        s.summary_exercise_filter = "bench".into();
+        s.summary_sets_filter = "5".into();
+        s.summary_reps_filter = "25".into();
+        s.summary_volume_filter = "1000".into();
+        s.summary_max_weight_filter = "200".into();
+        s.summary_best_1rm_filter = "210".into();
+        s.summary_weight_trend_filter = "1".into();
+        s.summary_volume_trend_filter = "2".into();
 
         let json = serde_json::to_string(&s).unwrap();
         let loaded: Settings = serde_json::from_str(&json).unwrap();
