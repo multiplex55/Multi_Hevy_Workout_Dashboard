@@ -181,11 +181,11 @@ pub fn weight_over_time_line(
                     };
                     let f = unit.factor() as f64;
                     let y = match y_axis {
-                        YAxis::Weight => e.weight as f64 * f,
-                        YAxis::Volume => e.weight as f64 * f * e.reps as f64,
+                        YAxis::Weight => e.weight.unwrap() as f64 * f,
+                        YAxis::Volume => e.weight.unwrap() as f64 * f * e.reps.unwrap() as f64,
                     };
                     let cmp = match y_axis {
-                        YAxis::Weight => e.weight as f64 * f,
+                        YAxis::Weight => e.weight.unwrap() as f64 * f,
                         YAxis::Volume => y,
                     };
                     if cmp > max_val {
@@ -267,8 +267,8 @@ pub fn estimated_1rm_line(
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
                 if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                     let f = unit.factor() as f64;
-                    let weight = e.weight as f64 * f;
-                    let est = match formula.estimate(weight, e.reps) {
+                    let weight = e.weight.unwrap() as f64 * f;
+                    let est = match formula.estimate(weight, e.reps.unwrap()) {
                         Some(v) => v,
                         None => continue,
                     };
@@ -360,10 +360,12 @@ pub fn histogram(
         if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
             if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                 let val = match metric {
-                    HistogramMetric::Weight { .. } => Some(e.weight as f64 * f),
-                    HistogramMetric::Volume { .. } => Some(e.weight as f64 * f * e.reps as f64),
+                    HistogramMetric::Weight { .. } => Some(e.weight.unwrap() as f64 * f),
+                    HistogramMetric::Volume { .. } => {
+                        Some(e.weight.unwrap() as f64 * f * e.reps.unwrap() as f64)
+                    }
                     HistogramMetric::Rpe { .. } => e.raw.rpe.map(|r| r as f64),
-                    HistogramMetric::Reps { .. } => Some(e.reps as f64),
+                    HistogramMetric::Reps { .. } => Some(e.reps.unwrap() as f64),
                 };
                 if let Some(v) = val {
                     if bin_size > 0.0 {
@@ -453,7 +455,7 @@ pub fn weight_reps_scatter(
         if normalized.is_empty() || normalized.iter().any(|ex| ex == &ex_name) {
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
                 if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                    pts.push([e.weight as f64 * f, e.reps as f64]);
+                    pts.push([e.weight.unwrap() as f64 * f, e.reps.unwrap() as f64]);
                 }
             }
         }
@@ -501,8 +503,8 @@ fn training_volume_points(
             if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                 let f = unit.factor() as f64;
                 let entry = map.entry(d).or_insert((0.0, 0.0));
-                entry.0 += e.weight as f64 * f * e.reps as f64; // volume
-                entry.1 += e.weight as f64 * f; // total weight
+                entry.0 += e.weight.unwrap() as f64 * f * e.reps.unwrap() as f64; // volume
+                entry.1 += e.weight.unwrap() as f64 * f; // total weight
             }
         }
     }
@@ -546,8 +548,8 @@ pub fn aggregated_volume_points(
                         let f = unit.factor() as f64;
                         let key = (d.iso_week().year(), d.iso_week().week());
                         let entry = map.entry(key).or_insert((0.0, 0.0));
-                        entry.0 += e.weight as f64 * f * e.reps as f64;
-                        entry.1 += e.weight as f64 * f;
+                        entry.0 += e.weight.unwrap() as f64 * f * e.reps.unwrap() as f64;
+                        entry.1 += e.weight.unwrap() as f64 * f;
                     }
                 }
             }
@@ -577,8 +579,8 @@ pub fn aggregated_volume_points(
                         let f = unit.factor() as f64;
                         let key = (d.year(), d.month());
                         let entry = map.entry(key).or_insert((0.0, 0.0));
-                        entry.0 += e.weight as f64 * f * e.reps as f64;
-                        entry.1 += e.weight as f64 * f;
+                        entry.0 += e.weight.unwrap() as f64 * f * e.reps.unwrap() as f64;
+                        entry.1 += e.weight.unwrap() as f64 * f;
                     }
                 }
             }
@@ -841,7 +843,7 @@ pub fn body_part_volume_line(
                 *map.entry(part.to_string())
                     .or_default()
                     .entry(key_date)
-                    .or_insert(0.0) += e.weight as f64 * f * e.reps as f64;
+                    .or_insert(0.0) += e.weight.unwrap() as f64 * f * e.reps.unwrap() as f64;
             }
         }
     }
@@ -910,7 +912,7 @@ pub fn body_part_volume_trend(
                 *map.entry(part.to_string())
                     .or_default()
                     .entry(key_date)
-                    .or_insert(0.0) += e.weight as f64 * f * e.reps as f64;
+                    .or_insert(0.0) += e.weight.unwrap() as f64 * f * e.reps.unwrap() as f64;
             }
         }
     }
@@ -991,8 +993,8 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Squat".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     rpe: Some(8.0),
                     ..RawWorkoutRow::default()
@@ -1001,8 +1003,8 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 80.0,
-                reps: 5,
+                weight: Some(80.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     rpe: Some(7.0),
                     ..RawWorkoutRow::default()
@@ -1011,8 +1013,8 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-03".into(),
                 exercise: "Squat".into(),
-                weight: 105.0,
-                reps: 5,
+                weight: Some(105.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     rpe: Some(9.0),
                     ..RawWorkoutRow::default()
@@ -1228,15 +1230,15 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Squat".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Squat".into(),
-                weight: 80.0,
-                reps: 10,
+                weight: Some(80.0),
+                reps: Some(10),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -1265,22 +1267,22 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Bench".into(),
-                weight: 90.0,
-                reps: 5,
+                weight: Some(90.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-03".into(),
                 exercise: "Bench".into(),
-                weight: 110.0,
-                reps: 5,
+                weight: Some(110.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -1305,22 +1307,22 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Deadlift".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Deadlift".into(),
-                weight: 110.0,
-                reps: 5,
+                weight: Some(110.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-03".into(),
                 exercise: "Deadlift".into(),
-                weight: 105.0,
-                reps: 5,
+                weight: Some(105.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
         ];

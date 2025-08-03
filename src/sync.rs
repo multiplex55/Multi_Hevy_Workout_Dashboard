@@ -32,22 +32,23 @@ pub fn fetch_latest_workouts(
                                 .get("weight")
                                 .or_else(|| set.get("weight_kg"))
                                 .or_else(|| set.get("weight_lb"))
-                                .and_then(|v| v.as_f64())
-                                .unwrap_or(0.0) as f32;
-                            let reps = set.get("reps").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                            let mut raw = RawWorkoutRow::default();
-                            raw.start_time = start_time.to_string();
-                            raw.exercise_title = name.to_string();
-                            raw.weight_kg = Some(weight);
-                            raw.reps = Some(reps);
-                            let entry = WorkoutEntry {
-                                date: date.clone(),
-                                exercise: name.to_string(),
-                                weight: weight * 2.20462,
-                                reps,
-                                raw,
-                            };
-                            entries.push(entry);
+                                .and_then(|v| v.as_f64());
+                            let reps = set.get("reps").and_then(|v| v.as_u64());
+                            if let (Some(weight), Some(reps)) = (weight, reps) {
+                                let mut raw = RawWorkoutRow::default();
+                                raw.start_time = start_time.to_string();
+                                raw.exercise_title = name.to_string();
+                                raw.weight_kg = Some(weight as f32);
+                                raw.reps = Some(reps as u32);
+                                let entry = WorkoutEntry {
+                                    date: date.clone(),
+                                    exercise: name.to_string(),
+                                    weight: Some(weight as f32 * 2.20462),
+                                    reps: Some(reps as u32),
+                                    raw,
+                                };
+                                entries.push(entry);
+                            }
                         }
                     }
                 }

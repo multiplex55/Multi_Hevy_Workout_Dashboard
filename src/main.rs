@@ -47,8 +47,8 @@ mod sync;
 struct WorkoutEntry {
     date: String,
     exercise: String,
-    weight: f32,
-    reps: u32,
+    weight: Option<f32>,
+    reps: Option<u32>,
     raw: RawWorkoutRow,
 }
 
@@ -126,18 +126,18 @@ fn parse_workout_csv<R: std::io::Read>(
                 chrono::NaiveDateTime::parse_from_str(&raw.start_time, "%d %b %Y, %H:%M")
             {
                 let date = dt.date().format("%Y-%m-%d").to_string();
-                let weight_lbs = raw
+                let weight = raw
                     .weight_lbs
                     .or_else(|| raw.weight_kg.map(|kg| kg * 2.20462));
-                let weight = weight_lbs.unwrap_or(0.0);
-                let reps = raw.reps.unwrap_or(0);
-                entries.push(WorkoutEntry {
-                    date,
-                    exercise: raw.exercise_title.clone(),
-                    weight,
-                    reps,
-                    raw,
-                });
+                if let (Some(weight), Some(reps)) = (weight, raw.reps) {
+                    entries.push(WorkoutEntry {
+                        date,
+                        exercise: raw.exercise_title.clone(),
+                        weight: Some(weight),
+                        reps: Some(reps),
+                        raw,
+                    });
+                }
             }
         }
         if let Some(tx) = &progress {
@@ -759,22 +759,22 @@ impl MyApp {
             }
         }
         if let Some(min_w) = self.settings.min_weight {
-            if e.weight < min_w {
+            if e.weight.unwrap() < min_w {
                 return false;
             }
         }
         if let Some(max_w) = self.settings.max_weight {
-            if e.weight > max_w {
+            if e.weight.unwrap() > max_w {
                 return false;
             }
         }
         if let Some(min_r) = self.settings.min_reps {
-            if e.reps < min_r {
+            if e.reps.unwrap() < min_r {
                 return false;
             }
         }
         if let Some(max_r) = self.settings.max_reps {
-            if e.reps > max_r {
+            if e.reps.unwrap() > max_r {
                 return false;
             }
         }
@@ -2260,10 +2260,10 @@ impl App for MyApp {
                                     });
                                     row.col(|ui| {
                                         let f = self.settings.weight_unit.factor();
-                                        ui.label(format!("{:.1}", e.weight * f));
+                                        ui.label(format!("{:.1}", e.weight.unwrap() * f));
                                     });
                                     row.col(|ui| {
-                                        ui.label(e.reps.to_string());
+                                        ui.label(e.reps.unwrap().to_string());
                                     });
                                 });
                             }
@@ -3914,8 +3914,8 @@ Week 12 - Lower - Strength,\"26 Jul 2025, 07:06\",\"26 Jul 2025, 08:11\",desc,\"
         let e = &entries[0];
         assert_eq!(e.date, "2025-07-26");
         assert_eq!(e.exercise, "Lying Leg Curl (Machine)");
-        assert_eq!(e.weight, 100.0);
-        assert_eq!(e.reps, 10);
+        assert_eq!(e.weight, Some(100.0));
+        assert_eq!(e.reps, Some(10));
         assert_eq!(e.raw.exercise_title, "Lying Leg Curl (Machine)");
         assert_eq!(e.raw.weight_lbs, Some(100.0));
         assert_eq!(e.raw.reps, Some(10));
@@ -3930,10 +3930,22 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
         let e = &entries[0];
         assert_eq!(e.date, "2025-07-27");
         assert_eq!(e.exercise, "Bench Press");
-        assert!((e.weight - 110.231).abs() < 0.01);
-        assert_eq!(e.reps, 8);
+        assert!((e.weight.unwrap() - 110.231).abs() < 0.01);
+        assert_eq!(e.reps, Some(8));
         assert_eq!(e.raw.weight_lbs, None);
         assert_eq!(e.raw.weight_kg, Some(50.0));
+    }
+
+    #[test]
+    fn parse_workout_csv_skips_missing() {
+        let data = "title,start_time,end_time,description,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_lbs,reps,distance_miles,duration_seconds,rpe\n\
+Week 1,\"01 Jan 2024, 10:00\",,desc,Bench Press,,,0,working,,5,,,\n\
+Week 1,\"01 Jan 2024, 10:05\",,desc,Bench Press,,,1,working,135,,,,\n\
+Week 1,\"01 Jan 2024, 10:10\",,desc,Bench Press,,,2,working,135,5,,,\n";
+        let entries = parse_workout_csv(data.as_bytes(), None).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].weight, Some(135.0));
+        assert_eq!(entries[0].reps, Some(5));
     }
 
     #[test]
@@ -3942,15 +3954,15 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Squat".into(),
-                weight: 150.0,
-                reps: 5,
+                weight: Some(150.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -3970,15 +3982,15 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Lying Leg Curl (Machine)".into(),
-                weight: 100.0,
-                reps: 10,
+                weight: Some(100.0),
+                reps: Some(10),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -3998,15 +4010,15 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Push-Up".into(),
-                weight: 0.0,
-                reps: 15,
+                weight: Some(0.0),
+                reps: Some(15),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -4026,15 +4038,15 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Lying Leg Curl (Machine)".into(),
-                weight: 100.0,
-                reps: 10,
+                weight: Some(100.0),
+                reps: Some(10),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -4054,8 +4066,8 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     exercise_notes: Some("#tempo slow".into()),
                     ..RawWorkoutRow::default()
@@ -4064,8 +4076,8 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     exercise_notes: Some("fast".into()),
                     ..RawWorkoutRow::default()
@@ -4094,8 +4106,8 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 45.0,
-                reps: 10,
+                weight: Some(45.0),
+                reps: Some(10),
                 raw: RawWorkoutRow {
                     set_type: Some("warmup".into()),
                     ..RawWorkoutRow::default()
@@ -4104,8 +4116,8 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     set_type: Some("working".into()),
                     ..RawWorkoutRow::default()
@@ -4119,7 +4131,7 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
         app.settings.exclude_warmups = true;
         let filtered = app.filtered_entries();
         assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].weight, 100.0);
+        assert_eq!(filtered[0].weight, Some(100.0));
     }
 
     #[test]
@@ -4128,15 +4140,15 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Bench".into(),
-                weight: 200.0,
-                reps: 10,
+                weight: Some(200.0),
+                reps: Some(10),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -4150,8 +4162,8 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
         app.settings.max_reps = Some(12);
         let filtered = app.filtered_entries();
         assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].weight, 200.0);
-        assert_eq!(filtered[0].reps, 10);
+        assert_eq!(filtered[0].weight, Some(200.0));
+        assert_eq!(filtered[0].reps, Some(10));
     }
 
     #[test]
@@ -4160,8 +4172,8 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 45.0,
-                reps: 10,
+                weight: Some(45.0),
+                reps: Some(10),
                 raw: RawWorkoutRow {
                     set_type: Some("warmup".into()),
                     title: Some("W1".into()),
@@ -4172,8 +4184,8 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     set_type: Some("working".into()),
                     title: Some("W1".into()),
@@ -4184,8 +4196,8 @@ Week 1 - Upper,\"27 Jul 2025, 07:00\",,desc,Bench Press,,,0,working,50,8,,,\n";
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Bench".into(),
-                weight: 105.0,
-                reps: 5,
+                weight: Some(105.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     set_type: Some("working".into()),
                     title: Some("W2".into()),

@@ -1,9 +1,9 @@
 use crate::{
-    analysis::{aggregate_weekly_summary, BasicStats, ExerciseRecord},
     WeightUnit, WorkoutEntry,
+    analysis::{BasicStats, ExerciseRecord, aggregate_weekly_summary},
 };
 use chrono::{Datelike, Duration, NaiveDate, Weekday};
-use maud::{html, Markup};
+use maud::{Markup, html};
 use plotters::prelude::*;
 use std::path::Path;
 
@@ -94,8 +94,7 @@ fn generate_volume_chart(
 
     chart.draw_series(LineSeries::new(
         weeks.iter().map(|w| {
-            let date =
-                NaiveDate::from_isoywd_opt(w.year, w.week, Weekday::Mon).unwrap();
+            let date = NaiveDate::from_isoywd_opt(w.year, w.week, Weekday::Mon).unwrap();
             let idx = date.signed_duration_since(start).num_weeks() as i32;
             (idx, w.total_volume * unit.factor())
         }),
