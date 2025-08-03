@@ -138,36 +138,38 @@ pub fn aggregate_exercise_stats(
     let mut trend_data: HashMap<String, Vec<(f32, f32, f32)>> = HashMap::new();
 
     for e in entries {
-        if let Some(d) = parse_date(&e.date) {
-            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                let stats = map
-                    .entry(e.exercise.clone())
-                    .or_insert_with(ExerciseStats::default);
-                stats.total_sets += 1;
-                stats.total_reps += e.reps;
-                stats.total_volume += e.weight * e.reps as f32;
+        if let (Some(weight), Some(reps)) = (e.weight, e.reps) {
+            if let Some(d) = parse_date(&e.date) {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                    let stats = map
+                        .entry(e.exercise.clone())
+                        .or_insert_with(ExerciseStats::default);
+                    stats.total_sets += 1;
+                    stats.total_reps += reps;
+                    stats.total_volume += weight * reps as f32;
 
-                stats.max_weight = match stats.max_weight {
-                    Some(current) if current >= e.weight => Some(current),
-                    _ => Some(e.weight),
-                };
+                    stats.max_weight = match stats.max_weight {
+                        Some(current) if current >= weight => Some(current),
+                        _ => Some(weight),
+                    };
 
-                let est = match formula.estimate(e.weight as f64, e.reps) {
-                    Some(v) => v as f32,
-                    None => continue,
-                };
-                stats.best_est_1rm = match stats.best_est_1rm {
-                    Some(current) if current >= est => Some(current),
-                    _ => Some(est),
-                };
+                    let est = match formula.estimate(weight as f64, reps) {
+                        Some(v) => v as f32,
+                        None => continue,
+                    };
+                    stats.best_est_1rm = match stats.best_est_1rm {
+                        Some(current) if current >= est => Some(current),
+                        _ => Some(est),
+                    };
 
-                // Scale the time axis so slope represents change per month
-                let t = d.num_days_from_ce() as f32 / 30.0;
-                trend_data.entry(e.exercise.clone()).or_default().push((
-                    t,
-                    e.weight,
-                    e.weight * e.reps as f32,
-                ));
+                    // Scale the time axis so slope represents change per month
+                    let t = d.num_days_from_ce() as f32 / 30.0;
+                    trend_data.entry(e.exercise.clone()).or_default().push((
+                        t,
+                        weight,
+                        weight * reps as f32,
+                    ));
+                }
             }
         }
     }
@@ -224,11 +226,13 @@ pub fn aggregate_rep_counts(
     let mut map: BTreeMap<u32, usize> = BTreeMap::new();
     let normalized: Vec<String> = exercises.iter().map(|s| normalize_exercise(s)).collect();
     for e in entries {
-        let ex_name = normalize_exercise(&e.exercise);
-        if normalized.is_empty() || normalized.iter().any(|ex| ex == &ex_name) {
-            if let Some(d) = parse_date(&e.date) {
-                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                    *map.entry(e.reps).or_insert(0) += 1;
+        if let Some(reps) = e.reps {
+            let ex_name = normalize_exercise(&e.exercise);
+            if normalized.is_empty() || normalized.iter().any(|ex| ex == &ex_name) {
+                if let Some(d) = parse_date(&e.date) {
+                    if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                        *map.entry(reps).or_insert(0) += 1;
+                    }
                 }
             }
         }
@@ -249,34 +253,36 @@ pub fn personal_records(
 ) -> HashMap<String, ExerciseRecord> {
     let mut map: HashMap<String, ExerciseRecord> = HashMap::new();
     for e in entries {
-        if let Some(d) = parse_date(&e.date) {
-            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                let rec = map.entry(e.exercise.clone()).or_default();
-                rec.max_weight = match rec.max_weight {
-                    Some(w) if w >= e.weight => Some(w),
-                    _ => Some(e.weight),
-                };
-                let vol = e.weight * e.reps as f32;
-                rec.max_volume = match rec.max_volume {
-                    Some(v) if v >= vol => Some(v),
-                    _ => Some(vol),
-                };
-                rec.rep_prs
-                    .entry(e.reps)
-                    .and_modify(|w| {
-                        if e.weight > *w {
-                            *w = e.weight;
-                        }
-                    })
-                    .or_insert(e.weight);
-                let est = match formula.estimate(e.weight as f64, e.reps) {
-                    Some(v) => v as f32,
-                    None => continue,
-                };
-                rec.best_est_1rm = match rec.best_est_1rm {
-                    Some(b) if b >= est => Some(b),
-                    _ => Some(est),
-                };
+        if let (Some(weight), Some(reps)) = (e.weight, e.reps) {
+            if let Some(d) = parse_date(&e.date) {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                    let rec = map.entry(e.exercise.clone()).or_default();
+                    rec.max_weight = match rec.max_weight {
+                        Some(w) if w >= weight => Some(w),
+                        _ => Some(weight),
+                    };
+                    let vol = weight * reps as f32;
+                    rec.max_volume = match rec.max_volume {
+                        Some(v) if v >= vol => Some(v),
+                        _ => Some(vol),
+                    };
+                    rec.rep_prs
+                        .entry(reps)
+                        .and_modify(|w| {
+                            if weight > *w {
+                                *w = weight;
+                            }
+                        })
+                        .or_insert(weight);
+                    let est = match formula.estimate(weight as f64, reps) {
+                        Some(v) => v as f32,
+                        None => continue,
+                    };
+                    rec.best_est_1rm = match rec.best_est_1rm {
+                        Some(b) if b >= est => Some(b),
+                        _ => Some(est),
+                    };
+                }
             }
         }
     }
@@ -322,20 +328,22 @@ pub fn aggregate_weekly_summary(
     let mut map: BTreeMap<(i32, u32), WeeklySummary> = BTreeMap::new();
 
     for e in entries {
-        if let Some(d) = parse_date(&e.date) {
-            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                let iso = d.iso_week();
-                let key = (iso.year(), iso.week());
-                let entry = map.entry(key).or_insert(WeeklySummary {
-                    year: iso.year(),
-                    week: iso.week(),
-                    total_sets: 0,
-                    total_volume: 0.0,
-                    acwr: None,
-                    over_threshold: false,
-                });
-                entry.total_sets += 1;
-                entry.total_volume += e.weight * e.reps as f32;
+        if let (Some(weight), Some(reps)) = (e.weight, e.reps) {
+            if let Some(d) = parse_date(&e.date) {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                    let iso = d.iso_week();
+                    let key = (iso.year(), iso.week());
+                    let entry = map.entry(key).or_insert(WeeklySummary {
+                        year: iso.year(),
+                        week: iso.week(),
+                        total_sets: 0,
+                        total_volume: 0.0,
+                        acwr: None,
+                        over_threshold: false,
+                    });
+                    entry.total_sets += 1;
+                    entry.total_volume += weight * reps as f32;
+                }
             }
         }
     }
@@ -419,17 +427,19 @@ pub fn compute_stats(
     let mut exercise_counts: HashMap<&str, usize> = HashMap::new();
 
     for e in entries {
-        if let Some(d) = parse_date(&e.date) {
-            if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                let id = format!(
-                    "{}{}",
-                    e.raw.title.as_deref().unwrap_or(""),
-                    e.raw.start_time
-                );
-                *sets_per_workout.entry(id.clone()).or_insert(0) += 1;
-                workout_dates.entry(id).or_insert(d);
-                total_reps += e.reps;
-                *exercise_counts.entry(e.exercise.as_str()).or_insert(0) += 1;
+        if let (Some(_weight), Some(reps)) = (e.weight, e.reps) {
+            if let Some(d) = parse_date(&e.date) {
+                if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
+                    let id = format!(
+                        "{}{}",
+                        e.raw.title.as_deref().unwrap_or(""),
+                        e.raw.start_time
+                    );
+                    *sets_per_workout.entry(id.clone()).or_insert(0) += 1;
+                    workout_dates.entry(id).or_insert(d);
+                    total_reps += reps;
+                    *exercise_counts.entry(e.exercise.as_str()).or_insert(0) += 1;
+                }
             }
         }
     }
@@ -506,8 +516,8 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Squat".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     title: Some("Workout 1".into()),
                     start_time: "01 Jan 2024, 10:00".into(),
@@ -518,8 +528,8 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Bench".into(),
-                weight: 80.0,
-                reps: 5,
+                weight: Some(80.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     title: Some("Workout 1".into()),
                     start_time: "01 Jan 2024, 10:00".into(),
@@ -530,8 +540,8 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-03".into(),
                 exercise: "Squat".into(),
-                weight: 105.0,
-                reps: 5,
+                weight: Some(105.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     title: Some("Workout 2".into()),
                     start_time: "03 Jan 2024, 10:00".into(),
@@ -542,8 +552,8 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-05".into(),
                 exercise: "Deadlift".into(),
-                weight: 120.0,
-                reps: 5,
+                weight: Some(120.0),
+                reps: Some(5),
                 raw: RawWorkoutRow {
                     title: Some("Workout 3".into()),
                     start_time: "05 Jan 2024, 10:00".into(),
@@ -559,15 +569,15 @@ mod tests {
             WorkoutEntry {
                 date: "not-a-date".into(),
                 exercise: "Squat".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-13-01".into(), // invalid month
                 exercise: "Bench".into(),
-                weight: 80.0,
-                reps: 5,
+                weight: Some(80.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
         ]
@@ -642,15 +652,15 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Test".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Test".into(),
-                weight: 60.0,
-                reps: 20,
+                weight: Some(60.0),
+                reps: Some(20),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -677,8 +687,8 @@ mod tests {
         let entries = vec![WorkoutEntry {
             date: "2024-01-01".into(),
             exercise: "T".into(),
-            weight: 40.0,
-            reps: 37,
+            weight: Some(40.0),
+            reps: Some(37),
             raw: RawWorkoutRow::default(),
         }];
         let map = aggregate_exercise_stats(&entries, OneRmFormula::Brzycki, None, None);
@@ -689,15 +699,15 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "T".into(),
-                weight: 40.0,
-                reps: 37,
+                weight: Some(40.0),
+                reps: Some(37),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "T".into(),
-                weight: 40.0,
-                reps: 38,
+                weight: Some(40.0),
+                reps: Some(38),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -710,8 +720,8 @@ mod tests {
         let entries = vec![WorkoutEntry {
             date: "2024-01-01".into(),
             exercise: "T".into(),
-            weight: 40.0,
-            reps: 38,
+            weight: Some(40.0),
+            reps: Some(38),
             raw: RawWorkoutRow::default(),
         }];
         let map = aggregate_exercise_stats(&entries, OneRmFormula::Lander, None, None);
@@ -811,15 +821,15 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "Test".into(),
-                weight: 100.0,
-                reps: 5,
+                weight: Some(100.0),
+                reps: Some(5),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "Test".into(),
-                weight: 60.0,
-                reps: 20,
+                weight: Some(60.0),
+                reps: Some(20),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -846,8 +856,8 @@ mod tests {
         let entries = vec![WorkoutEntry {
             date: "2024-01-01".into(),
             exercise: "T".into(),
-            weight: 40.0,
-            reps: 37,
+            weight: Some(40.0),
+            reps: Some(37),
             raw: RawWorkoutRow::default(),
         }];
         let map = personal_records(&entries, OneRmFormula::Brzycki, None, None);
@@ -858,15 +868,15 @@ mod tests {
             WorkoutEntry {
                 date: "2024-01-01".into(),
                 exercise: "T".into(),
-                weight: 40.0,
-                reps: 37,
+                weight: Some(40.0),
+                reps: Some(37),
                 raw: RawWorkoutRow::default(),
             },
             WorkoutEntry {
                 date: "2024-01-02".into(),
                 exercise: "T".into(),
-                weight: 40.0,
-                reps: 38,
+                weight: Some(40.0),
+                reps: Some(38),
                 raw: RawWorkoutRow::default(),
             },
         ];
@@ -879,8 +889,8 @@ mod tests {
         let entries = vec![WorkoutEntry {
             date: "2024-01-01".into(),
             exercise: "T".into(),
-            weight: 40.0,
-            reps: 38,
+            weight: Some(40.0),
+            reps: Some(38),
             raw: RawWorkoutRow::default(),
         }];
         let map = personal_records(&entries, OneRmFormula::Lander, None, None);
