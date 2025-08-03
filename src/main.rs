@@ -1752,93 +1752,153 @@ impl App for MyApp {
                         self.show_about = true;
                         ui.close_menu();
                     }
-                    if ui.button("Export Stats").clicked() {
-                        if let Some(path) = FileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .add_filter("CSV", &["csv"])
-                            .save_file()
-                        {
-                            let mut exercises = analysis::aggregate_exercise_stats(
-                                &self.workouts,
-                                self.settings.one_rm_formula,
-                                self.settings.start_date,
-                                self.settings.end_date,
-                            )
-                            .into_iter()
-                            .collect::<Vec<_>>();
-                            MyApp::sort_summary_stats(
-                                &mut exercises,
-                                self.summary_sort,
-                                self.summary_sort_ascending,
-                            );
-                            match path
-                                .extension()
-                                .and_then(|e| e.to_str())
-                                .map(|s| s.to_lowercase())
+                    ui.menu_button("Export", |ui| {
+                        if ui.button("Export Stats").clicked() {
+                            if let Some(path) = FileDialog::new()
+                                .add_filter("JSON", &["json"])
+                                .add_filter("CSV", &["csv"])
+                                .save_file()
                             {
-                                Some(ext) if ext == "csv" => {
-                                    if let Err(e) = save_stats_csv(&path, &self.stats, &exercises) {
-                                        log::error!("Failed to export stats: {e}");
+                                let mut exercises = analysis::aggregate_exercise_stats(
+                                    &self.workouts,
+                                    self.settings.one_rm_formula,
+                                    self.settings.start_date,
+                                    self.settings.end_date,
+                                )
+                                .into_iter()
+                                .collect::<Vec<_>>();
+                                MyApp::sort_summary_stats(
+                                    &mut exercises,
+                                    self.summary_sort,
+                                    self.summary_sort_ascending,
+                                );
+                                match path
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|s| s.to_lowercase())
+                                {
+                                    Some(ext) if ext == "csv" => {
+                                        if let Err(e) =
+                                            save_stats_csv(&path, &self.stats, &exercises)
+                                        {
+                                            log::error!("Failed to export stats: {e}");
+                                        }
                                     }
-                                }
-                                _ => {
-                                    if let Err(e) = save_stats_json(&path, &self.stats, &exercises)
-                                    {
-                                        log::error!("Failed to export stats: {e}");
+                                    _ => {
+                                        if let Err(e) =
+                                            save_stats_json(&path, &self.stats, &exercises)
+                                        {
+                                            log::error!("Failed to export stats: {e}");
+                                        }
                                     }
                                 }
                             }
+                            ui.close_menu();
                         }
-                        ui.close_menu();
-                    }
-                    if ui.button("Export Entries").clicked() {
-                        if let Some(path) = FileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .add_filter("CSV", &["csv"])
-                            .save_file()
-                        {
-                            match path
-                                .extension()
-                                .and_then(|e| e.to_str())
-                                .map(|s| s.to_lowercase())
+                        if ui.button("Export Entries").clicked() {
+                            if let Some(path) = FileDialog::new()
+                                .add_filter("JSON", &["json"])
+                                .add_filter("CSV", &["csv"])
+                                .save_file()
                             {
-                                Some(ext) if ext == "csv" => {
-                                    if let Err(e) = save_entries_csv(&path, &self.workouts) {
-                                        log::error!("Failed to export entries: {e}");
+                                match path
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|s| s.to_lowercase())
+                                {
+                                    Some(ext) if ext == "csv" => {
+                                        if let Err(e) = save_entries_csv(&path, &self.workouts) {
+                                            log::error!("Failed to export entries: {e}");
+                                        }
                                     }
-                                }
-                                _ => {
-                                    if let Err(e) = save_entries_json(&path, &self.workouts) {
-                                        log::error!("Failed to export entries: {e}");
+                                    _ => {
+                                        if let Err(e) = save_entries_json(&path, &self.workouts) {
+                                            log::error!("Failed to export entries: {e}");
+                                        }
                                     }
                                 }
                             }
+                            ui.close_menu();
                         }
-                        ui.close_menu();
-                    }
-                    if ui.button("Export Report").clicked() {
-                        if let Some(path) =
-                            FileDialog::new().add_filter("HTML", &["html"]).save_file()
-                        {
-                            let prs_map = analysis::personal_records(
-                                &self.workouts,
-                                self.settings.one_rm_formula,
-                                self.settings.start_date,
-                                self.settings.end_date,
-                            );
-                            let prs: Vec<_> = prs_map.into_iter().collect();
-                            if let Err(e) = export_html_report(
-                                &path,
-                                &self.workouts,
-                                &self.stats,
-                                &prs,
-                                self.settings.weight_unit,
-                            ) {
-                                log::error!("Failed to export report: {e}");
+                        if ui.button("Export Report").clicked() {
+                            if let Some(path) =
+                                FileDialog::new().add_filter("HTML", &["html"]).save_file()
+                            {
+                                let prs_map = analysis::personal_records(
+                                    &self.workouts,
+                                    self.settings.one_rm_formula,
+                                    self.settings.start_date,
+                                    self.settings.end_date,
+                                );
+                                let prs: Vec<_> = prs_map.into_iter().collect();
+                                if let Err(e) = export_html_report(
+                                    &path,
+                                    &self.workouts,
+                                    &self.stats,
+                                    &prs,
+                                    self.settings.weight_unit,
+                                ) {
+                                    log::error!("Failed to export report: {e}");
+                                }
                             }
+                            ui.close_menu();
                         }
-                        ui.close_menu();
-                    }
+                        if ui.button("Export CSV").clicked() {
+                            if let Some(path) =
+                                FileDialog::new().add_filter("CSV", &["csv"]).save_file()
+                            {
+                                let sel_norm: Vec<String> = self
+                                    .selected_exercises
+                                    .iter()
+                                    .map(|s| normalize_exercise(s))
+                                    .collect();
+                                let entries: Vec<WorkoutEntry> = self
+                                    .filtered_entries()
+                                    .into_iter()
+                                    .filter(|e| sel_norm.contains(&normalize_exercise(&e.exercise)))
+                                    .collect();
+                                if let Err(e) = save_entries_csv(&path, &entries) {
+                                    log::error!("Failed to export entries: {e}");
+                                }
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("Export PRs").clicked() {
+                            if let Some(path) = FileDialog::new()
+                                .add_filter("JSON", &["json"])
+                                .add_filter("CSV", &["csv"])
+                                .save_file()
+                            {
+                                let entries = self.filtered_entries();
+                                let mut recs: Vec<_> = analysis::personal_records(
+                                    &entries,
+                                    self.settings.one_rm_formula,
+                                    self.settings.start_date,
+                                    self.settings.end_date,
+                                )
+                                .into_iter()
+                                .collect();
+                                recs.sort_by(|a, b| a.0.cmp(&b.0));
+                                match path
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|s| s.to_lowercase())
+                                {
+                                    Some(ext) if ext == "csv" => {
+                                        if let Err(e) = save_prs_csv(&path, &recs) {
+                                            log::error!("Failed to export PRs: {e}");
+                                        }
+                                    }
+                                    _ => {
+                                        if let Err(e) = save_prs_json(&path, &recs) {
+                                            log::error!("Failed to export PRs: {e}");
+                                        }
+                                    }
+                                }
+                            }
+                            ui.close_menu();
+                        }
+                    });
                 });
                 ui.menu_button("Distributions", |ui| {
                     if ui.button("Histograms").clicked() {
@@ -2134,26 +2194,6 @@ impl App for MyApp {
                     }
                     let _ = ctx.input(|i| i.pointer.interact_pos());
                     plot_resp.response.context_menu(|ui| {
-                        if ui.button("Export CSV").clicked() {
-                            if let Some(path) =
-                                FileDialog::new().add_filter("CSV", &["csv"]).save_file()
-                            {
-                                let sel_norm: Vec<String> = self
-                                    .selected_exercises
-                                    .iter()
-                                    .map(|s| normalize_exercise(s))
-                                    .collect();
-                                let entries: Vec<WorkoutEntry> = self
-                                    .filtered_entries()
-                                    .into_iter()
-                                    .filter(|e| sel_norm.contains(&normalize_exercise(&e.exercise)))
-                                    .collect();
-                                if let Err(e) = save_entries_csv(&path, &entries) {
-                                    log::error!("Failed to export entries: {e}");
-                                }
-                            }
-                            ui.close_menu();
-                        }
                         if ui.button("Remove exercise").clicked() {
                             for ex in &sel {
                                 self.selected_exercises.retain(|e| e != ex);
@@ -2540,32 +2580,6 @@ impl App for MyApp {
                     .collect();
                     recs.sort_by(|a, b| a.0.cmp(&b.0));
                     let f = self.settings.weight_unit.factor();
-                    ui.horizontal(|ui| {
-                        if ui.button("Export PRs").clicked() {
-                            if let Some(path) = FileDialog::new()
-                                .add_filter("JSON", &["json"])
-                                .add_filter("CSV", &["csv"])
-                                .save_file()
-                            {
-                                match path
-                                    .extension()
-                                    .and_then(|e| e.to_str())
-                                    .map(|s| s.to_lowercase())
-                                {
-                                    Some(ext) if ext == "csv" => {
-                                        if let Err(e) = save_prs_csv(&path, &recs) {
-                                            log::error!("Failed to export PRs: {e}");
-                                        }
-                                    }
-                                    _ => {
-                                        if let Err(e) = save_prs_json(&path, &recs) {
-                                            log::error!("Failed to export PRs: {e}");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
                     let row_height = ui.text_style_height(&egui::TextStyle::Body);
                     egui_extras::TableBuilder::new(ui)
                         .striped(true)
@@ -3340,9 +3354,9 @@ impl App for MyApp {
                                 egui::ScrollArea::horizontal()
                                     .max_width(600.0)
                                     .show(ui, |ui| {
-                                        egui::Grid::new("filter_grid")
-                                            .num_columns(2)
-                                            .show(ui, |ui| {
+                                        egui::Grid::new("filter_grid").num_columns(2).show(
+                                            ui,
+                                            |ui| {
                                                 ui.horizontal(|ui| {
                                                     ui.label("Set type filter:");
                                                     let prev =
@@ -3395,282 +3409,292 @@ impl App for MyApp {
                                                         self.settings_dirty = true;
                                                     }
                                                 });
-                                        ui.end_row();
+                                                ui.end_row();
 
-                                        ui.horizontal(|ui| {
-                                            ui.label("Tags:");
-                                            let mut tags = self
-                                                .settings
-                                                .notes_filter
-                                                .as_ref()
-                                                .map(|q| q.tags.join(" "))
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut tags).changed() {
-                                                let regex = self
-                                                    .settings
-                                                    .notes_filter
-                                                    .as_ref()
-                                                    .and_then(|q| q.regex.clone())
-                                                    .unwrap_or_default();
-                                                let combined = if regex.trim().is_empty() {
-                                                    tags.clone()
-                                                } else if tags.trim().is_empty() {
-                                                    format!("regex:{regex}")
-                                                } else {
-                                                    format!("{tags} regex:{regex}")
-                                                };
-                                                let nq = analysis::parse_notes_query(&combined);
-                                                self.settings.notes_filter =
-                                                    if nq.tags.is_empty() && nq.regex.is_none() {
-                                                        None
-                                                    } else {
-                                                        Some(nq)
-                                                    };
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("Regex:");
-                                            let mut regex_text = self
-                                                .settings
-                                                .notes_filter
-                                                .as_ref()
-                                                .and_then(|q| q.regex.clone())
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut regex_text).changed() {
-                                                let tags = self
-                                                    .settings
-                                                    .notes_filter
-                                                    .as_ref()
-                                                    .map(|q| q.tags.join(" "))
-                                                    .unwrap_or_default();
-                                                let combined = if tags.trim().is_empty() {
-                                                    if regex_text.trim().is_empty() {
-                                                        String::new()
-                                                    } else {
-                                                        format!("regex:{regex_text}")
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Tags:");
+                                                    let mut tags = self
+                                                        .settings
+                                                        .notes_filter
+                                                        .as_ref()
+                                                        .map(|q| q.tags.join(" "))
+                                                        .unwrap_or_default();
+                                                    if ui.text_edit_singleline(&mut tags).changed()
+                                                    {
+                                                        let regex = self
+                                                            .settings
+                                                            .notes_filter
+                                                            .as_ref()
+                                                            .and_then(|q| q.regex.clone())
+                                                            .unwrap_or_default();
+                                                        let combined = if regex.trim().is_empty() {
+                                                            tags.clone()
+                                                        } else if tags.trim().is_empty() {
+                                                            format!("regex:{regex}")
+                                                        } else {
+                                                            format!("{tags} regex:{regex}")
+                                                        };
+                                                        let nq =
+                                                            analysis::parse_notes_query(&combined);
+                                                        self.settings.notes_filter =
+                                                            if nq.tags.is_empty()
+                                                                && nq.regex.is_none()
+                                                            {
+                                                                None
+                                                            } else {
+                                                                Some(nq)
+                                                            };
+                                                        self.settings_dirty = true;
                                                     }
-                                                } else if regex_text.trim().is_empty() {
-                                                    tags.clone()
-                                                } else {
-                                                    format!("{tags} regex:{regex_text}")
-                                                };
-                                                let nq = analysis::parse_notes_query(&combined);
-                                                self.settings.notes_filter =
-                                                    if nq.tags.is_empty() && nq.regex.is_none() {
-                                                        None
-                                                    } else {
-                                                        Some(nq)
-                                                    };
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        if ui
-                                            .checkbox(
-                                                &mut self.settings.exclude_warmups,
-                                                "Exclude warm-up sets",
-                                            )
-                                            .changed()
-                                        {
-                                            self.settings_dirty = true;
-                                        }
-                                        ui.end_row();
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Regex:");
+                                                    let mut regex_text = self
+                                                        .settings
+                                                        .notes_filter
+                                                        .as_ref()
+                                                        .and_then(|q| q.regex.clone())
+                                                        .unwrap_or_default();
+                                                    if ui
+                                                        .text_edit_singleline(&mut regex_text)
+                                                        .changed()
+                                                    {
+                                                        let tags = self
+                                                            .settings
+                                                            .notes_filter
+                                                            .as_ref()
+                                                            .map(|q| q.tags.join(" "))
+                                                            .unwrap_or_default();
+                                                        let combined = if tags.trim().is_empty() {
+                                                            if regex_text.trim().is_empty() {
+                                                                String::new()
+                                                            } else {
+                                                                format!("regex:{regex_text}")
+                                                            }
+                                                        } else if regex_text.trim().is_empty() {
+                                                            tags.clone()
+                                                        } else {
+                                                            format!("{tags} regex:{regex_text}")
+                                                        };
+                                                        let nq =
+                                                            analysis::parse_notes_query(&combined);
+                                                        self.settings.notes_filter =
+                                                            if nq.tags.is_empty()
+                                                                && nq.regex.is_none()
+                                                            {
+                                                                None
+                                                            } else {
+                                                                Some(nq)
+                                                            };
+                                                        self.settings_dirty = true;
+                                                    }
+                                                });
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.exclude_warmups,
+                                                        "Exclude warm-up sets",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
 
-                                        ui.horizontal(|ui| {
-                                            ui.label("Body part:");
-                                            let prev = self.settings.body_part_filter.clone();
-                                            let parts = body_parts::primary_muscle_groups();
-                                            egui::ComboBox::from_id_source(
-                                                "body_part_filter_combo",
-                                            )
-                                            .selected_text(prev.as_deref().unwrap_or("All"))
-                                            .show_ui(
-                                                ui,
-                                                |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.body_part_filter,
-                                                        None::<String>,
-                                                        "All",
-                                                    );
-                                                    for p in parts {
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Body part:");
+                                                    let prev =
+                                                        self.settings.body_part_filter.clone();
+                                                    let parts = body_parts::primary_muscle_groups();
+                                                    egui::ComboBox::from_id_source(
+                                                        "body_part_filter_combo",
+                                                    )
+                                                    .selected_text(prev.as_deref().unwrap_or("All"))
+                                                    .show_ui(ui, |ui| {
                                                         ui.selectable_value(
                                                             &mut self.settings.body_part_filter,
-                                                            Some(p.clone()),
-                                                            &p,
+                                                            None::<String>,
+                                                            "All",
                                                         );
+                                                        for p in parts {
+                                                            ui.selectable_value(
+                                                                &mut self.settings.body_part_filter,
+                                                                Some(p.clone()),
+                                                                &p,
+                                                            );
+                                                        }
+                                                    });
+                                                    if prev != self.settings.body_part_filter {
+                                                        self.settings_dirty = true;
                                                     }
-                                                },
-                                            );
-                                            if prev != self.settings.body_part_filter {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("Exercise type:");
-                                            let prev = self.settings.exercise_type_filter;
-                                            egui::ComboBox::from_id_source(
-                                                "exercise_type_filter_combo",
-                                            )
-                                            .selected_text(match prev {
-                                                Some(k) => format!("{:?}", k),
-                                                None => "Any".into(),
-                                            })
-                                            .show_ui(
-                                                ui,
-                                                |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.exercise_type_filter,
-                                                        None::<ExerciseType>,
-                                                        "Any",
-                                                    );
-                                                    for k in body_parts::ALL_EXERCISE_TYPES {
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Exercise type:");
+                                                    let prev = self.settings.exercise_type_filter;
+                                                    egui::ComboBox::from_id_source(
+                                                        "exercise_type_filter_combo",
+                                                    )
+                                                    .selected_text(match prev {
+                                                        Some(k) => format!("{:?}", k),
+                                                        None => "Any".into(),
+                                                    })
+                                                    .show_ui(ui, |ui| {
                                                         ui.selectable_value(
                                                             &mut self.settings.exercise_type_filter,
-                                                            Some(k),
-                                                            format!("{:?}", k),
+                                                            None::<ExerciseType>,
+                                                            "Any",
                                                         );
+                                                        for k in body_parts::ALL_EXERCISE_TYPES {
+                                                            ui.selectable_value(
+                                                                &mut self
+                                                                    .settings
+                                                                    .exercise_type_filter,
+                                                                Some(k),
+                                                                format!("{:?}", k),
+                                                            );
+                                                        }
+                                                    });
+                                                    if prev != self.settings.exercise_type_filter {
+                                                        self.settings_dirty = true;
                                                     }
-                                                },
-                                            );
-                                            if prev != self.settings.exercise_type_filter {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("Difficulty:");
-                                            let prev = self.settings.difficulty_filter;
-                                            egui::ComboBox::from_id_source(
-                                                "difficulty_filter_combo",
-                                            )
-                                            .selected_text(match prev {
-                                                Some(d) => format!("{:?}", d),
-                                                None => "Any".into(),
-                                            })
-                                            .show_ui(
-                                                ui,
-                                                |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.difficulty_filter,
-                                                        None::<body_parts::Difficulty>,
-                                                        "Any",
-                                                    );
-                                                    for d in body_parts::ALL_DIFFICULTIES {
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Difficulty:");
+                                                    let prev = self.settings.difficulty_filter;
+                                                    egui::ComboBox::from_id_source(
+                                                        "difficulty_filter_combo",
+                                                    )
+                                                    .selected_text(match prev {
+                                                        Some(d) => format!("{:?}", d),
+                                                        None => "Any".into(),
+                                                    })
+                                                    .show_ui(ui, |ui| {
                                                         ui.selectable_value(
                                                             &mut self.settings.difficulty_filter,
-                                                            Some(d),
-                                                            format!("{:?}", d),
+                                                            None::<body_parts::Difficulty>,
+                                                            "Any",
                                                         );
+                                                        for d in body_parts::ALL_DIFFICULTIES {
+                                                            ui.selectable_value(
+                                                                &mut self
+                                                                    .settings
+                                                                    .difficulty_filter,
+                                                                Some(d),
+                                                                format!("{:?}", d),
+                                                            );
+                                                        }
+                                                    });
+                                                    if prev != self.settings.difficulty_filter {
+                                                        self.settings_dirty = true;
                                                     }
-                                                },
-                                            );
-                                            if prev != self.settings.difficulty_filter {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("Equipment:");
-                                            let prev = self.settings.equipment_filter;
-                                            egui::ComboBox::from_id_source(
-                                                "equipment_filter_combo",
-                                            )
-                                            .selected_text(match prev {
-                                                Some(e) => format!("{:?}", e),
-                                                None => "Any".into(),
-                                            })
-                                            .show_ui(
-                                                ui,
-                                                |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.equipment_filter,
-                                                        None::<body_parts::Equipment>,
-                                                        "Any",
-                                                    );
-                                                    for e in body_parts::ALL_EQUIPMENT {
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Equipment:");
+                                                    let prev = self.settings.equipment_filter;
+                                                    egui::ComboBox::from_id_source(
+                                                        "equipment_filter_combo",
+                                                    )
+                                                    .selected_text(match prev {
+                                                        Some(e) => format!("{:?}", e),
+                                                        None => "Any".into(),
+                                                    })
+                                                    .show_ui(ui, |ui| {
                                                         ui.selectable_value(
                                                             &mut self.settings.equipment_filter,
-                                                            Some(e),
-                                                            format!("{:?}", e),
+                                                            None::<body_parts::Equipment>,
+                                                            "Any",
                                                         );
+                                                        for e in body_parts::ALL_EQUIPMENT {
+                                                            ui.selectable_value(
+                                                                &mut self.settings.equipment_filter,
+                                                                Some(e),
+                                                                format!("{:?}", e),
+                                                            );
+                                                        }
+                                                    });
+                                                    if prev != self.settings.equipment_filter {
+                                                        self.settings_dirty = true;
                                                     }
-                                                },
-                                            );
-                                            if prev != self.settings.equipment_filter {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.end_row();
+                                                });
+                                                ui.end_row();
 
-                                        ui.horizontal(|ui| {
-                                            ui.label("Min RPE:");
-                                            let mut min = self
-                                                .settings
-                                                .min_rpe
-                                                .map(|v| format!("{:.1}", v))
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut min).changed() {
-                                                self.settings.min_rpe = min.trim().parse().ok();
-                                                self.settings_dirty = true;
-                                            }
-                                            ui.label("Max RPE:");
-                                            let mut max = self
-                                                .settings
-                                                .max_rpe
-                                                .map(|v| format!("{:.1}", v))
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut max).changed() {
-                                                self.settings.max_rpe = max.trim().parse().ok();
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("Min weight:");
-                                            let mut mw = self
-                                                .settings
-                                                .min_weight
-                                                .map(|v| format!("{:.1}", v))
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut mw).changed() {
-                                                self.settings.min_weight = mw.trim().parse().ok();
-                                                self.settings_dirty = true;
-                                            }
-                                            ui.label("Max weight:");
-                                            let mut mxw = self
-                                                .settings
-                                                .max_weight
-                                                .map(|v| format!("{:.1}", v))
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut mxw).changed() {
-                                                self.settings.max_weight = mxw.trim().parse().ok();
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.end_row();
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Min RPE:");
+                                                    let mut min = self
+                                                        .settings
+                                                        .min_rpe
+                                                        .map(|v| format!("{:.1}", v))
+                                                        .unwrap_or_default();
+                                                    if ui.text_edit_singleline(&mut min).changed() {
+                                                        self.settings.min_rpe =
+                                                            min.trim().parse().ok();
+                                                        self.settings_dirty = true;
+                                                    }
+                                                    ui.label("Max RPE:");
+                                                    let mut max = self
+                                                        .settings
+                                                        .max_rpe
+                                                        .map(|v| format!("{:.1}", v))
+                                                        .unwrap_or_default();
+                                                    if ui.text_edit_singleline(&mut max).changed() {
+                                                        self.settings.max_rpe =
+                                                            max.trim().parse().ok();
+                                                        self.settings_dirty = true;
+                                                    }
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Min weight:");
+                                                    let mut mw = self
+                                                        .settings
+                                                        .min_weight
+                                                        .map(|v| format!("{:.1}", v))
+                                                        .unwrap_or_default();
+                                                    if ui.text_edit_singleline(&mut mw).changed() {
+                                                        self.settings.min_weight =
+                                                            mw.trim().parse().ok();
+                                                        self.settings_dirty = true;
+                                                    }
+                                                    ui.label("Max weight:");
+                                                    let mut mxw = self
+                                                        .settings
+                                                        .max_weight
+                                                        .map(|v| format!("{:.1}", v))
+                                                        .unwrap_or_default();
+                                                    if ui.text_edit_singleline(&mut mxw).changed() {
+                                                        self.settings.max_weight =
+                                                            mxw.trim().parse().ok();
+                                                        self.settings_dirty = true;
+                                                    }
+                                                });
+                                                ui.end_row();
 
-                                        ui.horizontal(|ui| {
-                                            ui.label("Min reps:");
-                                            let mut mr = self
-                                                .settings
-                                                .min_reps
-                                                .map(|v| v.to_string())
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut mr).changed() {
-                                                self.settings.min_reps = mr.trim().parse().ok();
-                                                self.settings_dirty = true;
-                                            }
-                                            ui.label("Max reps:");
-                                            let mut mxr = self
-                                                .settings
-                                                .max_reps
-                                                .map(|v| v.to_string())
-                                                .unwrap_or_default();
-                                            if ui.text_edit_singleline(&mut mxr).changed() {
-                                                self.settings.max_reps = mxr.trim().parse().ok();
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.end_row();
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Min reps:");
+                                                    let mut mr = self
+                                                        .settings
+                                                        .min_reps
+                                                        .map(|v| v.to_string())
+                                                        .unwrap_or_default();
+                                                    if ui.text_edit_singleline(&mut mr).changed() {
+                                                        self.settings.min_reps =
+                                                            mr.trim().parse().ok();
+                                                        self.settings_dirty = true;
+                                                    }
+                                                    ui.label("Max reps:");
+                                                    let mut mxr = self
+                                                        .settings
+                                                        .max_reps
+                                                        .map(|v| v.to_string())
+                                                        .unwrap_or_default();
+                                                    if ui.text_edit_singleline(&mut mxr).changed() {
+                                                        self.settings.max_reps =
+                                                            mxr.trim().parse().ok();
+                                                        self.settings_dirty = true;
+                                                    }
+                                                });
+                                                ui.end_row();
+                                            },
+                                        );
                                     });
-                                });
                             });
 
                         ui.separator();
