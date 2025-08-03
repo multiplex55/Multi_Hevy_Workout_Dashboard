@@ -8,7 +8,9 @@ const HEVY_URL: &str = "https://api.hevyapp.com/v1/workouts";
 /// If the `HEVY_API_KEY` environment variable is set, its value takes
 /// precedence over any key provided in the application settings.
 pub fn resolve_api_key(settings_key: Option<&str>) -> Option<String> {
-    std::env::var("HEVY_API_KEY").ok().or_else(|| settings_key.map(|s| s.to_string()))
+    std::env::var("HEVY_API_KEY")
+        .ok()
+        .or_else(|| settings_key.map(|s| s.to_string()))
 }
 
 #[derive(Debug)]
