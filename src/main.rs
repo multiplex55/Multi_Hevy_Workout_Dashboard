@@ -3441,263 +3441,287 @@ impl App for MyApp {
                         egui::CollapsingHeader::new("Display")
                             .default_open(true)
                             .show(ui, |ui| {
-                                egui::Grid::new("display_grid")
-                                    .num_columns(2)
+                                egui::ScrollArea::vertical()
+                                    .max_width(400.0)
                                     .show(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.label("Start date:");
-                                            let mut start = self
-                                                .settings
-                                                .start_date
-                                                .unwrap_or_else(|| Local::now().date_naive());
-                                            if ui
-                                                .add(
-                                                    DatePickerButton::new(&mut start)
-                                                        .id_source("start_date"),
-                                                )
-                                                .changed()
-                                            {
-                                                self.settings.start_date = Some(start);
-                                                self.settings_dirty = true;
-                                            }
-                                            if self.settings.start_date.is_some()
-                                                && ui.button("Clear").clicked()
-                                            {
-                                                self.settings.start_date = None;
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("End date:");
-                                            let mut end = self
-                                                .settings
-                                                .end_date
-                                                .unwrap_or_else(|| Local::now().date_naive());
-                                            if ui
-                                                .add(
-                                                    DatePickerButton::new(&mut end)
-                                                        .id_source("end_date"),
-                                                )
-                                                .changed()
-                                            {
-                                                self.settings.end_date = Some(end);
-                                                self.settings_dirty = true;
-                                            }
-                                            if self.settings.end_date.is_some()
-                                                && ui.button("Clear").clicked()
-                                            {
-                                                self.settings.end_date = None;
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.end_row();
-
-                                        ui.horizontal(|ui| {
-                                            ui.label("1RM Formula:");
-                                            let prev = self.settings.one_rm_formula;
-                                            egui::ComboBox::from_id_source("rm_formula_setting")
-                                                .selected_text(match self.settings.one_rm_formula {
-                                                    OneRmFormula::Epley => "Epley",
-                                                    OneRmFormula::Brzycki => "Brzycki",
-                                                    OneRmFormula::Lombardi => "Lombardi",
-                                                    OneRmFormula::Mayhew => "Mayhew",
-                                                    OneRmFormula::OConner => "O'Conner",
-                                                    OneRmFormula::Wathan => "Wathan",
-                                                    OneRmFormula::Lander => "Lander",
-                                                })
-                                                .show_ui(ui, |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.one_rm_formula,
-                                                        OneRmFormula::Epley,
-                                                        "Epley",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.one_rm_formula,
-                                                        OneRmFormula::Brzycki,
-                                                        "Brzycki",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.one_rm_formula,
-                                                        OneRmFormula::Lombardi,
-                                                        "Lombardi",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.one_rm_formula,
-                                                        OneRmFormula::Mayhew,
-                                                        "Mayhew",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.one_rm_formula,
-                                                        OneRmFormula::OConner,
-                                                        "O'Conner",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.one_rm_formula,
-                                                        OneRmFormula::Wathan,
-                                                        "Wathan",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.one_rm_formula,
-                                                        OneRmFormula::Lander,
-                                                        "Lander",
-                                                    );
+                                        egui::CollapsingHeader::new("Date Range")
+                                            .default_open(true)
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Start date:");
+                                                    let mut start =
+                                                        self.settings.start_date.unwrap_or_else(
+                                                            || Local::now().date_naive(),
+                                                        );
+                                                    if ui
+                                                        .add(
+                                                            DatePickerButton::new(&mut start)
+                                                                .id_source("start_date"),
+                                                        )
+                                                        .changed()
+                                                    {
+                                                        self.settings.start_date = Some(start);
+                                                        self.settings_dirty = true;
+                                                    }
+                                                    if self.settings.start_date.is_some()
+                                                        && ui.button("Clear").clicked()
+                                                    {
+                                                        self.settings.start_date = None;
+                                                        self.settings_dirty = true;
+                                                    }
                                                 });
-                                            if prev != self.settings.one_rm_formula {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("X Axis:");
-                                            let prev = self.settings.x_axis;
-                                            egui::ComboBox::from_id_source("x_axis_setting")
-                                                .selected_text(match self.settings.x_axis {
-                                                    XAxis::Date => "Date",
-                                                    XAxis::WorkoutIndex => "Workout Index",
-                                                })
-                                                .show_ui(ui, |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.x_axis,
-                                                        XAxis::Date,
-                                                        "Date",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.x_axis,
-                                                        XAxis::WorkoutIndex,
-                                                        "Workout Index",
-                                                    );
+                                                ui.horizontal(|ui| {
+                                                    ui.label("End date:");
+                                                    let mut end =
+                                                        self.settings.end_date.unwrap_or_else(
+                                                            || Local::now().date_naive(),
+                                                        );
+                                                    if ui
+                                                        .add(
+                                                            DatePickerButton::new(&mut end)
+                                                                .id_source("end_date"),
+                                                        )
+                                                        .changed()
+                                                    {
+                                                        self.settings.end_date = Some(end);
+                                                        self.settings_dirty = true;
+                                                    }
+                                                    if self.settings.end_date.is_some()
+                                                        && ui.button("Clear").clicked()
+                                                    {
+                                                        self.settings.end_date = None;
+                                                        self.settings_dirty = true;
+                                                    }
                                                 });
-                                            if prev != self.settings.x_axis {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.end_row();
-
-                                        ui.horizontal(|ui| {
-                                            ui.label("Y Axis:");
-                                            let prev = self.settings.y_axis;
-                                            egui::ComboBox::from_id_source("y_axis_setting")
-                                                .selected_text(match self.settings.y_axis {
-                                                    YAxis::Weight => "Weight",
-                                                    YAxis::Volume => "Volume",
-                                                })
-                                                .show_ui(ui, |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.y_axis,
-                                                        YAxis::Weight,
-                                                        "Weight",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.y_axis,
-                                                        YAxis::Volume,
-                                                        "Volume",
-                                                    );
+                                            });
+                                        egui::CollapsingHeader::new("Axes & Units")
+                                            .default_open(true)
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.label("1RM Formula:");
+                                                    let prev = self.settings.one_rm_formula;
+                                                    egui::ComboBox::from_id_source(
+                                                        "rm_formula_setting",
+                                                    )
+                                                    .selected_text(
+                                                        match self.settings.one_rm_formula {
+                                                            OneRmFormula::Epley => "Epley",
+                                                            OneRmFormula::Brzycki => "Brzycki",
+                                                            OneRmFormula::Lombardi => "Lombardi",
+                                                            OneRmFormula::Mayhew => "Mayhew",
+                                                            OneRmFormula::OConner => "O'Conner",
+                                                            OneRmFormula::Wathan => "Wathan",
+                                                            OneRmFormula::Lander => "Lander",
+                                                        },
+                                                    )
+                                                    .show_ui(ui, |ui| {
+                                                        ui.selectable_value(
+                                                            &mut self.settings.one_rm_formula,
+                                                            OneRmFormula::Epley,
+                                                            "Epley",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.one_rm_formula,
+                                                            OneRmFormula::Brzycki,
+                                                            "Brzycki",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.one_rm_formula,
+                                                            OneRmFormula::Lombardi,
+                                                            "Lombardi",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.one_rm_formula,
+                                                            OneRmFormula::Mayhew,
+                                                            "Mayhew",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.one_rm_formula,
+                                                            OneRmFormula::OConner,
+                                                            "O'Conner",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.one_rm_formula,
+                                                            OneRmFormula::Wathan,
+                                                            "Wathan",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.one_rm_formula,
+                                                            OneRmFormula::Lander,
+                                                            "Lander",
+                                                        );
+                                                    });
+                                                    if prev != self.settings.one_rm_formula {
+                                                        self.settings_dirty = true;
+                                                    }
                                                 });
-                                            if prev != self.settings.y_axis {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("Weight unit:");
-                                            let prev = self.settings.weight_unit;
-                                            egui::ComboBox::from_id_source("weight_unit_setting")
-                                                .selected_text(match self.settings.weight_unit {
-                                                    WeightUnit::Lbs => "lbs",
-                                                    WeightUnit::Kg => "kg",
-                                                })
-                                                .show_ui(ui, |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.weight_unit,
-                                                        WeightUnit::Lbs,
-                                                        "lbs",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.weight_unit,
-                                                        WeightUnit::Kg,
-                                                        "kg",
-                                                    );
+                                                ui.horizontal(|ui| {
+                                                    ui.label("X Axis:");
+                                                    let prev = self.settings.x_axis;
+                                                    egui::ComboBox::from_id_source(
+                                                        "x_axis_setting",
+                                                    )
+                                                    .selected_text(match self.settings.x_axis {
+                                                        XAxis::Date => "Date",
+                                                        XAxis::WorkoutIndex => "Workout Index",
+                                                    })
+                                                    .show_ui(ui, |ui| {
+                                                        ui.selectable_value(
+                                                            &mut self.settings.x_axis,
+                                                            XAxis::Date,
+                                                            "Date",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.x_axis,
+                                                            XAxis::WorkoutIndex,
+                                                            "Workout Index",
+                                                        );
+                                                    });
+                                                    if prev != self.settings.x_axis {
+                                                        self.settings_dirty = true;
+                                                    }
                                                 });
-                                            if prev != self.settings.weight_unit {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.end_row();
-
-                                        ui.horizontal(|ui| {
-                                            ui.label("Volume agg:");
-                                            let prev = self.settings.volume_aggregation;
-                                            egui::ComboBox::from_id_source("volume_agg_setting")
-                                                .selected_text(
-                                                    match self.settings.volume_aggregation {
-                                                        VolumeAggregation::Daily => "Daily",
-                                                        VolumeAggregation::Weekly => "Weekly",
-                                                        VolumeAggregation::Monthly => "Monthly",
-                                                    },
-                                                )
-                                                .show_ui(ui, |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.volume_aggregation,
-                                                        VolumeAggregation::Daily,
-                                                        "Daily",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.volume_aggregation,
-                                                        VolumeAggregation::Weekly,
-                                                        "Weekly",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self.settings.volume_aggregation,
-                                                        VolumeAggregation::Monthly,
-                                                        "Monthly",
-                                                    );
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Y Axis:");
+                                                    let prev = self.settings.y_axis;
+                                                    egui::ComboBox::from_id_source(
+                                                        "y_axis_setting",
+                                                    )
+                                                    .selected_text(match self.settings.y_axis {
+                                                        YAxis::Weight => "Weight",
+                                                        YAxis::Volume => "Volume",
+                                                    })
+                                                    .show_ui(ui, |ui| {
+                                                        ui.selectable_value(
+                                                            &mut self.settings.y_axis,
+                                                            YAxis::Weight,
+                                                            "Weight",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.y_axis,
+                                                            YAxis::Volume,
+                                                            "Volume",
+                                                        );
+                                                    });
+                                                    if prev != self.settings.y_axis {
+                                                        self.settings_dirty = true;
+                                                    }
                                                 });
-                                            if prev != self.settings.volume_aggregation {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("Body part agg:");
-                                            let prev = self.settings.body_part_volume_aggregation;
-                                            egui::ComboBox::from_id_source(
-                                                "body_part_volume_agg_setting",
-                                            )
-                                            .selected_text(
-                                                match self.settings.body_part_volume_aggregation {
-                                                    VolumeAggregation::Daily => "Daily",
-                                                    VolumeAggregation::Weekly => "Weekly",
-                                                    VolumeAggregation::Monthly => "Monthly",
-                                                },
-                                            )
-                                            .show_ui(
-                                                ui,
-                                                |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Weight unit:");
+                                                    let prev = self.settings.weight_unit;
+                                                    egui::ComboBox::from_id_source(
+                                                        "weight_unit_setting",
+                                                    )
+                                                    .selected_text(
+                                                        match self.settings.weight_unit {
+                                                            WeightUnit::Lbs => "lbs",
+                                                            WeightUnit::Kg => "kg",
+                                                        },
+                                                    )
+                                                    .show_ui(ui, |ui| {
+                                                        ui.selectable_value(
+                                                            &mut self.settings.weight_unit,
+                                                            WeightUnit::Lbs,
+                                                            "lbs",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.weight_unit,
+                                                            WeightUnit::Kg,
+                                                            "kg",
+                                                        );
+                                                    });
+                                                    if prev != self.settings.weight_unit {
+                                                        self.settings_dirty = true;
+                                                    }
+                                                });
+                                            });
+                                        egui::CollapsingHeader::new("Aggregation")
+                                            .default_open(true)
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Volume agg:");
+                                                    let prev = self.settings.volume_aggregation;
+                                                    egui::ComboBox::from_id_source(
+                                                        "volume_agg_setting",
+                                                    )
+                                                    .selected_text(
+                                                        match self.settings.volume_aggregation {
+                                                            VolumeAggregation::Daily => "Daily",
+                                                            VolumeAggregation::Weekly => "Weekly",
+                                                            VolumeAggregation::Monthly => "Monthly",
+                                                        },
+                                                    )
+                                                    .show_ui(ui, |ui| {
+                                                        ui.selectable_value(
+                                                            &mut self.settings.volume_aggregation,
+                                                            VolumeAggregation::Daily,
+                                                            "Daily",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.volume_aggregation,
+                                                            VolumeAggregation::Weekly,
+                                                            "Weekly",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self.settings.volume_aggregation,
+                                                            VolumeAggregation::Monthly,
+                                                            "Monthly",
+                                                        );
+                                                    });
+                                                    if prev != self.settings.volume_aggregation {
+                                                        self.settings_dirty = true;
+                                                    }
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Body part agg:");
+                                                    let prev =
+                                                        self.settings.body_part_volume_aggregation;
+                                                    egui::ComboBox::from_id_source(
+                                                        "body_part_volume_agg_setting",
+                                                    )
+                                                    .selected_text(
+                                                        match self
                                                             .settings
-                                                            .body_part_volume_aggregation,
-                                                        VolumeAggregation::Daily,
-                                                        "Daily",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self
+                                                            .body_part_volume_aggregation
+                                                        {
+                                                            VolumeAggregation::Daily => "Daily",
+                                                            VolumeAggregation::Weekly => "Weekly",
+                                                            VolumeAggregation::Monthly => "Monthly",
+                                                        },
+                                                    )
+                                                    .show_ui(ui, |ui| {
+                                                        ui.selectable_value(
+                                                            &mut self
+                                                                .settings
+                                                                .body_part_volume_aggregation,
+                                                            VolumeAggregation::Daily,
+                                                            "Daily",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self
+                                                                .settings
+                                                                .body_part_volume_aggregation,
+                                                            VolumeAggregation::Weekly,
+                                                            "Weekly",
+                                                        );
+                                                        ui.selectable_value(
+                                                            &mut self
+                                                                .settings
+                                                                .body_part_volume_aggregation,
+                                                            VolumeAggregation::Monthly,
+                                                            "Monthly",
+                                                        );
+                                                    });
+                                                    if prev
+                                                        != self
                                                             .settings
-                                                            .body_part_volume_aggregation,
-                                                        VolumeAggregation::Weekly,
-                                                        "Weekly",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut self
-                                                            .settings
-                                                            .body_part_volume_aggregation,
-                                                        VolumeAggregation::Monthly,
-                                                        "Monthly",
-                                                    );
-                                                },
-                                            );
-                                            if prev != self.settings.body_part_volume_aggregation {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.end_row();
+                                                            .body_part_volume_aggregation
+                                                    {
+                                                        self.settings_dirty = true;
+                                                    }
+                                                });
+                                            });
                                     });
                             });
 
