@@ -2,6 +2,7 @@ use crate::{
     analysis::{aggregate_weekly_summary, BasicStats, ExerciseRecord},
     WeightUnit, WorkoutEntry,
 };
+use chrono::{Datelike, Duration, NaiveDate, Weekday};
 use maud::{html, Markup};
 use plotters::prelude::*;
 use std::path::Path;
@@ -57,6 +58,17 @@ fn generate_volume_chart(
         root.present()?;
         return Ok(());
     }
+    // Determine chronological index for each (year, week) pair
+    let start = NaiveDate::from_isoywd_opt(weeks[0].year, weeks[0].week, Weekday::Mon)
+        .ok_or("invalid start week")?;
+    let end = NaiveDate::from_isoywd_opt(
+        weeks.last().unwrap().year,
+        weeks.last().unwrap().week,
+        Weekday::Mon,
+    )
+    .ok_or("invalid end week")?;
+    let max_idx = end.signed_duration_since(start).num_weeks() as i32;
+
     let max = weeks
         .iter()
         .map(|w| w.total_volume * unit.factor())
@@ -66,18 +78,27 @@ fn generate_volume_chart(
         .margin(5)
         .x_label_area_size(30)
         .y_label_area_size(40)
-        .build_cartesian_2d(0..weeks.len(), 0f32..max)?;
+        .build_cartesian_2d(0..(max_idx + 1), 0f32..max)?;
     chart
         .configure_mesh()
         .disable_mesh()
         .x_desc("Week")
         .y_desc(format!("Volume ({:?})", unit))
+        .x_labels((max_idx + 1) as usize)
+        .x_label_formatter(&|x| {
+            let date = start + Duration::weeks(*x as i64);
+            let iso = date.iso_week();
+            format!("{}-{:02}", iso.year(), iso.week())
+        })
         .draw()?;
+
     chart.draw_series(LineSeries::new(
-        weeks
-            .iter()
-            .enumerate()
-            .map(|(i, w)| (i, w.total_volume * unit.factor())),
+        weeks.iter().map(|w| {
+            let date =
+                NaiveDate::from_isoywd_opt(w.year, w.week, Weekday::Mon).unwrap();
+            let idx = date.signed_duration_since(start).num_weeks() as i32;
+            (idx, w.total_volume * unit.factor())
+        }),
         &BLUE,
     ))?;
     root.present()?;
