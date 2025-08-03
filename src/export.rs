@@ -1,6 +1,6 @@
 use crate::{
     WorkoutEntry,
-    analysis::{BasicStats, ExerciseStats},
+    analysis::{BasicStats, ExerciseRecord, ExerciseStats},
 };
 use serde::Serialize;
 use std::io::Write;
@@ -70,6 +70,36 @@ pub fn save_entries_csv<P: AsRef<Path>>(path: P, entries: &[WorkoutEntry]) -> cs
 
 pub fn save_entries_json<P: AsRef<Path>>(path: P, entries: &[WorkoutEntry]) -> std::io::Result<()> {
     write_json(entries, path)
+}
+
+pub fn save_prs_csv<P: AsRef<Path>>(
+    path: P,
+    records: &[(String, ExerciseRecord)],
+) -> csv::Result<()> {
+    #[derive(Serialize)]
+    struct Row<'a> {
+        exercise: &'a str,
+        max_weight: Option<f32>,
+        max_volume: Option<f32>,
+        best_est_1rm: Option<f32>,
+    }
+    let rows: Vec<Row> = records
+        .iter()
+        .map(|(ex, r)| Row {
+            exercise: ex,
+            max_weight: r.max_weight,
+            max_volume: r.max_volume,
+            best_est_1rm: r.best_est_1rm,
+        })
+        .collect();
+    write_csv(std::fs::File::create(path)?, &rows)
+}
+
+pub fn save_prs_json<P: AsRef<Path>>(
+    path: P,
+    records: &[(String, ExerciseRecord)],
+) -> std::io::Result<()> {
+    write_json(records, path)
 }
 
 #[derive(Serialize)]

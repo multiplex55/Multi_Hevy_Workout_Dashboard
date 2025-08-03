@@ -30,7 +30,10 @@ use plotting::{
 mod capture;
 use capture::{crop_image, save_png};
 mod export;
-use export::{save_entries_csv, save_entries_json, save_stats_csv, save_stats_json};
+use export::{
+    save_entries_csv, save_entries_json, save_prs_csv, save_prs_json, save_stats_csv,
+    save_stats_json,
+};
 mod body_parts;
 use body_parts::ExerciseType;
 mod exercise_mapping;
@@ -232,7 +235,7 @@ struct Settings {
     #[serde(default)]
     show_exercise_stats: bool,
     #[serde(default)]
-    show_personal_records: bool,
+    show_pr_window: bool,
     #[serde(default)]
     show_exercise_panel: bool,
     highlight_max: bool,
@@ -353,7 +356,7 @@ impl Default for Settings {
             show_exercise_volume: false,
             show_weekly_summary: false,
             show_exercise_stats: false,
-            show_personal_records: false,
+            show_pr_window: false,
             show_exercise_panel: true,
             highlight_max: true,
             show_weight_trend: false,
@@ -437,7 +440,7 @@ struct MyApp {
     show_compare_window: bool,
     show_distributions: bool,
     show_exercise_stats: bool,
-    show_personal_records: bool,
+    show_pr_window: bool,
     show_exercise_panel: bool,
     show_about: bool,
     sort_column: SortColumn,
@@ -464,7 +467,7 @@ impl Default for MyApp {
         let settings = Settings::load();
         exercise_mapping::load();
         let show_exercise_stats = settings.show_exercise_stats;
-        let show_personal_records = settings.show_personal_records;
+        let show_pr_window = settings.show_pr_window;
         let show_exercise_panel = settings.show_exercise_panel;
         let mut app = Self {
             workouts: Vec::new(),
@@ -483,7 +486,7 @@ impl Default for MyApp {
             show_compare_window: false,
             show_distributions: false,
             show_exercise_stats,
-            show_personal_records,
+            show_pr_window,
             show_exercise_panel,
             show_about: false,
             sort_column: SortColumn::Date,
@@ -1520,7 +1523,7 @@ impl MyApp {
         self.settings.summary_sort = self.summary_sort;
         self.settings.summary_sort_ascending = self.summary_sort_ascending;
         self.settings.show_exercise_stats = self.show_exercise_stats;
-        self.settings.show_personal_records = self.show_personal_records;
+        self.settings.show_pr_window = self.show_pr_window;
         self.settings.show_exercise_panel = self.show_exercise_panel;
     }
 }
@@ -1652,8 +1655,8 @@ impl App for MyApp {
                         ui.close_menu();
                     }
                     if ui.button("Personal Records").clicked() {
-                        self.show_personal_records = !self.show_personal_records;
-                        self.settings.show_personal_records = self.show_personal_records;
+                        self.show_pr_window = !self.show_pr_window;
+                        self.settings.show_pr_window = self.show_pr_window;
                         self.settings_dirty = true;
                         ui.close_menu();
                     }
@@ -2410,8 +2413,8 @@ impl App for MyApp {
             self.show_exercise_stats = open;
         }
 
-        if self.show_personal_records {
-            let mut open = self.show_personal_records;
+        if self.show_pr_window {
+            let mut open = self.show_pr_window;
             egui::Window::new("Personal Records")
                 .open(&mut open)
                 .resizable(true)
@@ -2427,36 +2430,86 @@ impl App for MyApp {
                     .collect();
                     recs.sort_by(|a, b| a.0.cmp(&b.0));
                     let f = self.settings.weight_unit.factor();
-                    egui::Grid::new("personal_records_grid")
+                    ui.horizontal(|ui| {
+                        if ui.button("Export PRs").clicked() {
+                            if let Some(path) = FileDialog::new()
+                                .add_filter("JSON", &["json"])
+                                .add_filter("CSV", &["csv"])
+                                .save_file()
+                            {
+                                match path
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|s| s.to_lowercase())
+                                {
+                                    Some(ext) if ext == "csv" => {
+                                        if let Err(e) = save_prs_csv(&path, &recs) {
+                                            log::error!("Failed to export PRs: {e}");
+                                        }
+                                    }
+                                    _ => {
+                                        if let Err(e) = save_prs_json(&path, &recs) {
+                                            log::error!("Failed to export PRs: {e}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    let row_height = ui.text_style_height(&egui::TextStyle::Body);
+                    egui_extras::TableBuilder::new(ui)
                         .striped(true)
-                        .show(ui, |ui| {
-                            ui.label("Exercise");
-                            ui.label("Max Weight");
-                            ui.label("Max Volume");
-                            ui.label("Best 1RM");
-                            ui.end_row();
+                        .resizable(true)
+                        .column(egui_extras::Column::auto())
+                        .column(egui_extras::Column::auto())
+                        .column(egui_extras::Column::auto())
+                        .column(egui_extras::Column::auto())
+                        .header(row_height, |mut header| {
+                            header.col(|ui| {
+                                ui.label("Exercise");
+                            });
+                            header.col(|ui| {
+                                ui.label("Max Weight");
+                            });
+                            header.col(|ui| {
+                                ui.label("Max Volume");
+                            });
+                            header.col(|ui| {
+                                ui.label("Best 1RM");
+                            });
+                        })
+                        .body(|mut body| {
                             for (ex, r) in &recs {
-                                ui.label(ex);
-                                if let Some(w) = r.max_weight {
-                                    ui.label(format!("{:.1}", w * f));
-                                } else {
-                                    ui.label("-");
-                                }
-                                if let Some(v) = r.max_volume {
-                                    ui.label(format!("{:.1}", v * f));
-                                } else {
-                                    ui.label("-");
-                                }
-                                if let Some(b) = r.best_est_1rm {
-                                    ui.label(format!("{:.1}", b * f));
-                                } else {
-                                    ui.label("-");
-                                }
-                                ui.end_row();
+                                body.row(row_height, |mut row| {
+                                    row.col(|ui| {
+                                        ui.label(ex);
+                                    });
+                                    row.col(|ui| {
+                                        if let Some(w) = r.max_weight {
+                                            ui.label(format!("{:.1}", w * f));
+                                        } else {
+                                            ui.label("-");
+                                        }
+                                    });
+                                    row.col(|ui| {
+                                        if let Some(v) = r.max_volume {
+                                            ui.label(format!("{:.1}", v * f));
+                                        } else {
+                                            ui.label("-");
+                                        }
+                                    });
+                                    row.col(|ui| {
+                                        if let Some(b) = r.best_est_1rm {
+                                            ui.label(format!("{:.1}", b * f));
+                                        } else {
+                                            ui.label("-");
+                                        }
+                                    });
+                                });
                             }
                         });
                 });
-            self.show_personal_records = open;
+            self.show_pr_window = open;
         }
 
         if self.show_about {
@@ -3581,7 +3634,7 @@ mod tests {
         s.show_exercise_volume = true;
         s.show_weekly_summary = true;
         s.show_exercise_stats = true;
-        s.show_personal_records = true;
+        s.show_pr_window = true;
         s.show_exercise_panel = false;
         s.body_part_volume_aggregation = VolumeAggregation::Monthly;
         s.auto_load_last = false;
