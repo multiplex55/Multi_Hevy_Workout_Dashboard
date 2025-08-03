@@ -805,6 +805,48 @@ pub fn rpe_over_time_line(
     lines
 }
 
+/// Create a line plot of average RPE over time with optional smoothing and
+/// highlighting of the maximum value.
+///
+/// This is a thin wrapper around [`rpe_over_time_line`] that augments the
+/// returned [`Line`]s with metadata needed by the UI.
+pub fn average_rpe_line(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+    x_axis: XAxis,
+    ma_window: Option<usize>,
+    method: SmoothingMethod,
+) -> Vec<LineWithMarker> {
+    use egui_plot::PlotItem;
+    use std::cmp::Ordering;
+    let lines = rpe_over_time_line(entries, start, end, x_axis, ma_window, method);
+    let mut out = Vec::new();
+    for (i, line) in lines.into_iter().enumerate() {
+        let mut points = Vec::new();
+        if let egui_plot::PlotGeometry::Points(pts) = line.geometry() {
+            points = pts.iter().map(|p| [p.x, p.y]).collect();
+        }
+        let (max_point, label) = if i == 0 {
+            let mp = points
+                .iter()
+                .cloned()
+                .max_by(|a, b| a[1].partial_cmp(&b[1]).unwrap_or(Ordering::Equal));
+            (mp, Some("Max Avg RPE".to_string()))
+        } else {
+            (None, None)
+        };
+        out.push(LineWithMarker {
+            line,
+            points,
+            max_point,
+            label,
+            record_points: Vec::new(),
+        });
+    }
+    out
+}
+
 /// Create a line plot of training volume per primary body part.
 ///
 /// Each body part is plotted separately. Entries outside the optional date
@@ -1198,6 +1240,44 @@ mod tests {
         .next()
         .unwrap();
         let expected = vec![[0.0, 7.5], [1.0, 9.0]];
+        assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_rpe_over_time_line_start_filter() {
+        let start = NaiveDate::parse_from_str("2024-01-02", "%Y-%m-%d").unwrap();
+        let line = rpe_over_time_line(
+            &sample_entries(),
+            Some(start),
+            None,
+            XAxis::Date,
+            None,
+            SmoothingMethod::SimpleMA,
+        )
+        .into_iter()
+        .next()
+        .unwrap();
+        let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
+        let expected = vec![[d3.num_days_from_ce() as f64, 9.0]];
+        assert_eq!(line_points(line), expected);
+    }
+
+    #[test]
+    fn test_rpe_over_time_line_end_filter() {
+        let end = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let line = rpe_over_time_line(
+            &sample_entries(),
+            None,
+            Some(end),
+            XAxis::Date,
+            None,
+            SmoothingMethod::SimpleMA,
+        )
+        .into_iter()
+        .next()
+        .unwrap();
+        let d1 = NaiveDate::parse_from_str("2024-01-01", "%Y-%m-%d").unwrap();
+        let expected = vec![[d1.num_days_from_ce() as f64, 7.5]];
         assert_eq!(line_points(line), expected);
     }
 

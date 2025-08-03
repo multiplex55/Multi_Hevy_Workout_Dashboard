@@ -22,10 +22,10 @@ use analysis::{BasicStats, ExerciseStats, NotesQuery, compute_stats, format_load
 mod plotting;
 use plotting::{
     HistogramMetric, OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis,
-    aggregated_volume_points, body_part_distribution, body_part_volume_line,
+    aggregated_volume_points, average_rpe_line, body_part_distribution, body_part_volume_line,
     body_part_volume_trend, estimated_1rm_line, exercise_volume_line, forecast_line_points,
-    histogram, rpe_over_time_line, sets_per_day_bar, training_volume_line, trend_line_points,
-    unique_exercises, weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
+    histogram, sets_per_day_bar, training_volume_line, trend_line_points, unique_exercises,
+    weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -1454,7 +1454,7 @@ impl MyApp {
                             } else {
                                 None
                             };
-                            for (i, l) in rpe_over_time_line(
+                            for (i, lw) in average_rpe_line(
                                 filtered,
                                 self.settings.start_date,
                                 self.settings.end_date,
@@ -1465,16 +1465,25 @@ impl MyApp {
                             .into_iter()
                             .enumerate()
                             {
-                                if let PlotGeometry::Points(pts) = l.geometry() {
-                                    for p in pts {
-                                        let arr = [p.x, p.y];
-                                        all_points.push(arr);
-                                        if i == 0 {
-                                            line_points.push(arr);
-                                        }
+                                for p in &lw.points {
+                                    all_points.push(*p);
+                                }
+                                if i == 0 {
+                                    line_points = lw.points.clone();
+                                }
+                                plot_ui.line(lw.line);
+                                if self.settings.highlight_max {
+                                    if let (Some(p), Some(label)) =
+                                        (lw.max_point, lw.label.as_deref())
+                                    {
+                                        plot_ui.points(
+                                            Points::new(vec![p])
+                                                .shape(MarkerShape::Diamond)
+                                                .color(egui::Color32::WHITE)
+                                                .name(label),
+                                        );
                                     }
                                 }
-                                plot_ui.line(l);
                             }
                             if self.settings.show_rpe_trend {
                                 let trend = trend_line_points(&line_points);
