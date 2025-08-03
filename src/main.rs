@@ -712,6 +712,16 @@ impl MyApp {
 
                         self.toast_start = Some(Instant::now());
                     }
+                    Err(sync::SyncError::Unauthorized) => {
+                        log::error!("Sync failed: unauthorized");
+                        self.pr_message = Some(
+                            "Hevy API key unauthorized. Please update it in settings.".to_string(),
+                        );
+                        self.pr_toast_start = Some(Instant::now());
+                        self.settings.hevy_api_key = None;
+                        self.settings.save();
+                        self.show_settings = true;
+                    }
                     Err(e) => {
                         log::error!("Sync failed: {e}");
                     }
