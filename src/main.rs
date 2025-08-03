@@ -243,6 +243,12 @@ struct Settings {
     show_pr_window: bool,
     #[serde(default)]
     show_exercise_panel: bool,
+    #[serde(default)]
+    show_compare_window: bool,
+    #[serde(default)]
+    show_stats_window: bool,
+    #[serde(default)]
+    show_mapping: bool,
     highlight_max: bool,
     #[serde(default)]
     show_pr_markers: bool,
@@ -369,6 +375,9 @@ impl Default for Settings {
             show_exercise_stats: false,
             show_pr_window: false,
             show_exercise_panel: true,
+            show_compare_window: false,
+            show_stats_window: false,
+            show_mapping: false,
             highlight_max: true,
             show_pr_markers: true,
             show_weight_trend: false,
@@ -452,6 +461,7 @@ struct MyApp {
     show_entries: bool,
     show_plot_window: bool,
     show_compare_window: bool,
+    show_stats_window: bool,
     show_distributions: bool,
     show_exercise_stats: bool,
     show_pr_window: bool,
@@ -483,6 +493,9 @@ impl Default for MyApp {
         let show_exercise_stats = settings.show_exercise_stats;
         let show_pr_window = settings.show_pr_window;
         let show_exercise_panel = settings.show_exercise_panel;
+        let show_compare_window = settings.show_compare_window;
+        let show_stats_window = settings.show_stats_window;
+        let show_mapping = settings.show_mapping;
         let mut app = Self {
             workouts: Vec::new(),
             stats: BasicStats::default(),
@@ -497,7 +510,8 @@ impl Default for MyApp {
             show_settings: false,
             show_entries: false,
             show_plot_window: false,
-            show_compare_window: false,
+            show_compare_window,
+            show_stats_window,
             show_distributions: false,
             show_exercise_stats,
             show_pr_window,
@@ -509,7 +523,7 @@ impl Default for MyApp {
             summary_sort_ascending: true,
             capture_rect: None,
             settings_dirty: false,
-            show_mapping: false,
+            show_mapping,
             mapping_exercise: String::new(),
             mapping_dirty: false,
             mapping_entry: exercise_mapping::MuscleMapping::default(),
@@ -1745,7 +1759,9 @@ impl App for MyApp {
                         ui.close_menu();
                     }
                     if ui.button("Muscle Mapping").clicked() {
-                        self.show_mapping = true;
+                        self.show_mapping = !self.show_mapping;
+                        self.settings.show_mapping = self.show_mapping;
+                        self.settings_dirty = true;
                         ui.close_menu();
                     }
                     if ui.button("Usage Tips").clicked() {
@@ -2143,38 +2159,6 @@ impl App for MyApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if !self.workouts.is_empty() {
-                ui.heading("Workout Statistics");
-                if self.settings.start_date.is_some() || self.settings.end_date.is_some() {
-                    let start = self
-                        .settings
-                        .start_date
-                        .map(|d| d.format("%Y-%m-%d").to_string())
-                        .unwrap_or_else(|| "start".into());
-                    let end = self
-                        .settings
-                        .end_date
-                        .map(|d| d.format("%Y-%m-%d").to_string())
-                        .unwrap_or_else(|| "end".into());
-                    ui.label(format!("Range: {start} - {end}"));
-                }
-                ui.label(format!("Total workouts: {}", self.stats.total_workouts));
-                ui.label(format!(
-                    "Avg sets/workout: {:.2}",
-                    self.stats.avg_sets_per_workout
-                ));
-                ui.label(format!("Avg reps/set: {:.2}", self.stats.avg_reps_per_set));
-                ui.label(format!(
-                    "Avg days between: {:.2}",
-                    self.stats.avg_days_between
-                ));
-                if let Some(ref ex) = self.stats.most_common_exercise {
-                    ui.label(format!("Most common exercise: {}", ex));
-                }
-                if ui.button("Open Table").clicked() {
-                    self.show_entries = true;
-                }
-                ui.separator();
-
                 let filtered = self.filtered_entries();
 
                 if self.selected_exercises.is_empty() {
@@ -2207,6 +2191,13 @@ impl App for MyApp {
                     }
                     if ui.button("Compare Window").clicked() {
                         self.show_compare_window = !self.show_compare_window;
+                        self.settings.show_compare_window = self.show_compare_window;
+                        self.settings_dirty = true;
+                    }
+                    if ui.button("Stats Window").clicked() {
+                        self.show_stats_window = !self.show_stats_window;
+                        self.settings.show_stats_window = self.show_stats_window;
+                        self.settings_dirty = true;
                     }
                     if ui.button("Exercise Stats").clicked() {
                         self.show_exercise_stats = !self.show_exercise_stats;
@@ -2378,6 +2369,53 @@ impl App for MyApp {
                     }
                 });
             self.show_compare_window = open;
+            if self.settings.show_compare_window != self.show_compare_window {
+                self.settings.show_compare_window = self.show_compare_window;
+                self.settings_dirty = true;
+            }
+        }
+
+        if self.show_stats_window {
+            let mut open = self.show_stats_window;
+            egui::Window::new("Workout Statistics")
+                .open(&mut open)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    if self.settings.start_date.is_some() || self.settings.end_date.is_some() {
+                        let start = self
+                            .settings
+                            .start_date
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_else(|| "start".into());
+                        let end = self
+                            .settings
+                            .end_date
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_else(|| "end".into());
+                        ui.label(format!("Range: {start} - {end}"));
+                    }
+                    ui.label(format!("Total workouts: {}", self.stats.total_workouts));
+                    ui.label(format!(
+                        "Avg sets/workout: {:.2}",
+                        self.stats.avg_sets_per_workout
+                    ));
+                    ui.label(format!("Avg reps/set: {:.2}", self.stats.avg_reps_per_set));
+                    ui.label(format!(
+                        "Avg days between: {:.2}",
+                        self.stats.avg_days_between
+                    ));
+                    if let Some(ref ex) = self.stats.most_common_exercise {
+                        ui.label(format!("Most common exercise: {}", ex));
+                    }
+                    if ui.button("Open Table").clicked() {
+                        self.show_entries = true;
+                    }
+                });
+            self.show_stats_window = open;
+            if self.settings.show_stats_window != self.show_stats_window {
+                self.settings.show_stats_window = self.show_stats_window;
+                self.settings_dirty = true;
+            }
         }
 
         if self.show_distributions {
@@ -2723,6 +2761,10 @@ impl App for MyApp {
                     }
                 });
             self.show_mapping = open;
+            if self.settings.show_mapping != self.show_mapping {
+                self.settings.show_mapping = self.show_mapping;
+                self.settings_dirty = true;
+            }
         }
 
         if self.show_settings {
@@ -3859,6 +3901,9 @@ mod tests {
         s.show_exercise_stats = true;
         s.show_pr_window = true;
         s.show_exercise_panel = false;
+        s.show_compare_window = true;
+        s.show_stats_window = true;
+        s.show_mapping = true;
         s.body_part_volume_aggregation = VolumeAggregation::Monthly;
         s.auto_load_last = false;
         s.last_file = Some("/tmp/test.csv".into());
