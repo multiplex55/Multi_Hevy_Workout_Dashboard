@@ -8,6 +8,12 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+/// Threshold for the acute/chronic workload ratio.
+///
+/// Weeks with a ratio above this value will be flagged as potential
+/// overtraining in the UI.
+pub const ACWR_THRESHOLD: f32 = 1.5;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct NotesQuery {
     pub tags: Vec<String>,
@@ -111,6 +117,10 @@ pub struct WeeklySummary {
     pub total_sets: usize,
     /// Total training volume (weight * reps) for the week in lbs.
     pub total_volume: f32,
+    /// Acute/Chronic workload ratio computed from weekly volume.
+    pub acwr: Option<f32>,
+    /// Indicates whether this week exceeds the [`ACWR_THRESHOLD`].
+    pub over_threshold: bool,
 }
 
 /// Aggregate per-exercise statistics from a slice of workout entries.
@@ -321,6 +331,8 @@ pub fn aggregate_weekly_summary(
                     week: iso.week(),
                     total_sets: 0,
                     total_volume: 0.0,
+                    acwr: None,
+                    over_threshold: false,
                 });
                 entry.total_sets += 1;
                 entry.total_volume += e.weight * e.reps as f32;
@@ -328,7 +340,23 @@ pub fn aggregate_weekly_summary(
         }
     }
 
-    map.into_iter().map(|(_, v)| v).collect()
+    let mut weeks: Vec<WeeklySummary> = map.into_iter().map(|(_, v)| v).collect();
+    weeks.sort_by_key(|w| (w.year, w.week));
+
+    // Compute Acute:Chronic workload ratio using the previous 4 weeks as the
+    // chronic workload. The first 4 weeks will not have a ratio value.
+    for i in 0..weeks.len() {
+        if i >= 4 {
+            let chronic: f32 = weeks[i - 4..i].iter().map(|w| w.total_volume).sum::<f32>() / 4.0;
+            if chronic > 0.0 {
+                let ratio = weeks[i].total_volume / chronic;
+                weeks[i].acwr = Some(ratio);
+                weeks[i].over_threshold = ratio > ACWR_THRESHOLD;
+            }
+        }
+    }
+
+    weeks
 }
 
 fn parse_date(date: &str) -> Option<NaiveDate> {
@@ -885,6 +913,8 @@ mod tests {
         assert_eq!(w.week, 1);
         assert_eq!(w.total_sets, 4);
         assert!((w.total_volume - 2025.0).abs() < 1e-6);
+        assert!(w.acwr.is_none());
+        assert!(!w.over_threshold);
     }
 
     #[test]
@@ -896,5 +926,7 @@ mod tests {
         let w = &weeks[0];
         assert_eq!(w.total_sets, 2);
         assert!((w.total_volume - 1125.0).abs() < 1e-6);
+        assert!(w.acwr.is_none());
+        assert!(!w.over_threshold);
     }
 }
