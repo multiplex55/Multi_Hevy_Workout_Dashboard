@@ -7,7 +7,7 @@ use egui_extras::DatePickerButton;
 use egui_plot::{Legend, Line, MarkerShape, Plot, PlotGeometry, PlotItem, PlotPoints, Points};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read};
 use std::sync::mpsc;
@@ -2060,6 +2060,15 @@ impl App for MyApp {
                         exercises.retain(|(_, d)| *d <= threshold);
                     }
 
+                    let mut by_body_part: BTreeMap<String, Vec<String>> = BTreeMap::new();
+                    for (ex, _dist) in &exercises {
+                        let part =
+                            body_parts::body_part_for(ex).unwrap_or_else(|| "Other".to_string());
+                        by_body_part.entry(part).or_default().push(ex.clone());
+                    }
+                    let top_matches: HashSet<String> =
+                        exercises.iter().take(3).map(|(e, _)| e.clone()).collect();
+
                     ui.label("Exercises:");
                     let resp = ui.menu_button(
                         if self.selected_exercises.is_empty() {
@@ -2068,23 +2077,29 @@ impl App for MyApp {
                             self.selected_exercises.join(", ")
                         },
                         |ui| {
-                            for (idx, (ex, _dist)) in exercises.iter().enumerate() {
-                                let mut sel = self.selected_exercises.contains(ex);
-                                let label = if idx < 3 && !self.search_query.is_empty() {
-                                    RichText::new(ex).color(egui::Color32::LIGHT_GREEN)
-                                } else {
-                                    RichText::new(ex)
-                                };
-                                if ui.add(egui::Checkbox::new(&mut sel, label)).changed() {
-                                    if sel {
-                                        if !self.selected_exercises.contains(ex) {
-                                            self.selected_exercises.push(ex.clone());
+                            for (part, exs) in &by_body_part {
+                                ui.collapsing(part, |ui| {
+                                    for ex in exs {
+                                        let mut sel = self.selected_exercises.contains(ex);
+                                        let label = if top_matches.contains(ex)
+                                            && !self.search_query.is_empty()
+                                        {
+                                            RichText::new(ex).color(egui::Color32::LIGHT_GREEN)
+                                        } else {
+                                            RichText::new(ex)
+                                        };
+                                        if ui.add(egui::Checkbox::new(&mut sel, label)).changed() {
+                                            if sel {
+                                                if !self.selected_exercises.contains(ex) {
+                                                    self.selected_exercises.push(ex.clone());
+                                                }
+                                            } else {
+                                                self.selected_exercises.retain(|e| e != ex);
+                                            }
+                                            self.update_selected_stats();
                                         }
-                                    } else {
-                                        self.selected_exercises.retain(|e| e != ex);
                                     }
-                                    self.update_selected_stats();
-                                }
+                                });
                             }
                         },
                     );
