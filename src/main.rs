@@ -682,9 +682,11 @@ impl MyApp {
     }
 
     fn sync_from_hevy(&mut self) {
-        if let Some(ref key) = self.settings.hevy_api_key {
+        let forced_key = std::env::var("HEVY_API_KEY").ok();
+        if let Some(key) = sync::resolve_api_key(self.settings.hevy_api_key.as_deref()) {
+            log::info!("Using Hevy API key: {key}");
             if let Some(path) = FileDialog::new().add_filter("CSV", &["csv"]).save_file() {
-                match sync::fetch_latest_workouts(key, self.settings.last_sync.as_deref()) {
+                match sync::fetch_latest_workouts(&key, self.settings.last_sync.as_deref()) {
                     Ok(mut new_entries) => {
                         let existing: HashSet<String> = self
                             .workouts
@@ -718,14 +720,17 @@ impl MyApp {
                             "Hevy API key unauthorized. Please update it in settings.".to_string(),
                         );
                         self.pr_toast_start = Some(Instant::now());
-                        self.settings.hevy_api_key = None;
-                        self.settings.save();
+                        if forced_key.is_none() {
+                            self.settings.hevy_api_key = None;
+                            self.settings.save();
+                        }
                         self.show_settings = true;
                     }
                     Err(sync::SyncError::Forbidden(body)) => {
                         log::error!("Sync failed: forbidden: {body}");
                         self.pr_message = Some(
-                            "Hevy API key forbidden. Please check the key or its permissions.".to_string(),
+                            "Hevy API key forbidden. Please check the key or its permissions."
+                                .to_string(),
                         );
                         self.pr_toast_start = Some(Instant::now());
                         self.show_settings = true;

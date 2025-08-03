@@ -3,6 +3,14 @@ use serde_json::Value;
 
 const HEVY_URL: &str = "https://api.hevyapp.com/v1/workouts";
 
+/// Determine the API key to use for Hevy requests.
+///
+/// If the `HEVY_API_KEY` environment variable is set, its value takes
+/// precedence over any key provided in the application settings.
+pub fn resolve_api_key(settings_key: Option<&str>) -> Option<String> {
+    std::env::var("HEVY_API_KEY").ok().or_else(|| settings_key.map(|s| s.to_string()))
+}
+
 #[derive(Debug)]
 pub enum SyncError {
     Unauthorized(String),
@@ -105,6 +113,7 @@ pub fn fetch_latest_workouts(
     api_key: &str,
     after: Option<&str>,
 ) -> Result<Vec<WorkoutEntry>, SyncError> {
+    log::info!("Fetching latest workouts using API key: {api_key}");
     fetch_latest_workouts_with_url(HEVY_URL, api_key, after)
 }
 
@@ -147,5 +156,33 @@ mod tests {
         }
 
         m.assert();
+    }
+
+    #[test]
+    fn env_var_overrides_settings_key() {
+        unsafe {
+            std::env::set_var("HEVY_API_KEY", "forced");
+        }
+
+        let key = resolve_api_key(Some("settings_key"));
+        assert_eq!(key.as_deref(), Some("forced"));
+
+        // Ensure the selected key is sent in the request
+        let server = MockServer::start();
+        let m = server.mock(|when, then| {
+            when.method(GET)
+                .path("/v1/workouts")
+                .header("X-API-Key", "forced");
+            then.status(200).body("[]");
+        });
+
+        fetch_latest_workouts_with_url(&server.url("/v1/workouts"), key.as_deref().unwrap(), None)
+            .unwrap();
+
+        m.assert();
+
+        unsafe {
+            std::env::remove_var("HEVY_API_KEY");
+        }
     }
 }

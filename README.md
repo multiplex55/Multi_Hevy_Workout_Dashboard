@@ -20,6 +20,18 @@ Run the application with:
 cargo run --release
 ```
 
+## Hevy API Key
+
+The application can download workouts directly from the Hevy API. The API key is
+normally stored in the settings file, but you can override it for a single run by
+setting the `HEVY_API_KEY` environment variable. The selected key is logged on
+startup so you can verify which key is being used.
+
+```bash
+export HEVY_API_KEY=your_api_key
+cargo run --release
+```
+
 On launch you will see a window with a **Load CSV** button.
 
 ## Hevy CSV Example
