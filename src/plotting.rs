@@ -7,6 +7,7 @@ use crate::{
     analysis::{
         WeeklySummary, aggregate_rep_counts, aggregate_sets_by_body_part, linear_projection,
     },
+    exercise_utils::normalize_exercise,
 };
 use serde::{Deserialize, Serialize};
 
@@ -162,8 +163,11 @@ pub fn weight_over_time_line(
         let mut idx = 0usize;
         let mut max_val = f64::NEG_INFINITY;
         let mut max_point = None;
-        let mut filtered: Vec<&WorkoutEntry> =
-            entries.iter().filter(|e| e.exercise == *exercise).collect();
+        let ex_norm = normalize_exercise(exercise);
+        let mut filtered: Vec<&WorkoutEntry> = entries
+            .iter()
+            .filter(|e| normalize_exercise(&e.exercise) == ex_norm)
+            .collect();
         if x_axis == XAxis::Date {
             filtered.sort_by_key(|e| NaiveDate::parse_from_str(&e.date, "%Y-%m-%d").ok());
         }
@@ -250,8 +254,11 @@ pub fn estimated_1rm_line(
         let mut idx = 0usize;
         let mut max_est = f64::NEG_INFINITY;
         let mut max_point = None;
-        let mut filtered: Vec<&WorkoutEntry> =
-            entries.iter().filter(|e| e.exercise == *exercise).collect();
+        let ex_norm = normalize_exercise(exercise);
+        let mut filtered: Vec<&WorkoutEntry> = entries
+            .iter()
+            .filter(|e| normalize_exercise(&e.exercise) == ex_norm)
+            .collect();
         if x_axis == XAxis::Date {
             filtered.sort_by_key(|e| NaiveDate::parse_from_str(&e.date, "%Y-%m-%d").ok());
         }
@@ -439,8 +446,10 @@ pub fn weight_reps_scatter(
 ) -> Points {
     let mut pts = Vec::new();
     let f = unit.factor() as f64;
+    let normalized: Vec<String> = exercises.iter().map(|s| normalize_exercise(s)).collect();
     for e in entries {
-        if exercises.is_empty() || exercises.contains(&e.exercise) {
+        let ex_name = normalize_exercise(&e.exercise);
+        if normalized.is_empty() || normalized.iter().any(|ex| ex == &ex_name) {
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
                 if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                     pts.push([e.weight as f64 * f, e.reps as f64]);
@@ -926,9 +935,10 @@ pub fn exercise_volume_line(
     agg: VolumeAggregation,
     ma_window: Option<usize>,
 ) -> Vec<Line> {
+    let target = normalize_exercise(exercise);
     let filtered: Vec<WorkoutEntry> = entries
         .iter()
-        .filter(|e| e.exercise == exercise)
+        .filter(|e| normalize_exercise(&e.exercise) == target)
         .cloned()
         .collect();
     let points = aggregated_volume_points(&filtered, start, end, x_axis, YAxis::Volume, unit, agg);
@@ -1430,7 +1440,7 @@ mod tests {
     fn test_exercise_volume_line_weekly() {
         let lines = exercise_volume_line(
             &sample_entries(),
-            "Squat",
+            "squat",
             None,
             None,
             XAxis::Date,
@@ -1448,7 +1458,7 @@ mod tests {
     fn test_exercise_volume_line_monthly() {
         let lines = exercise_volume_line(
             &sample_entries(),
-            "Bench",
+            "BENCH",
             None,
             None,
             XAxis::Date,

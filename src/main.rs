@@ -38,6 +38,8 @@ mod report;
 use report::export_html_report;
 mod body_parts;
 use body_parts::ExerciseType;
+mod exercise_utils;
+use exercise_utils::normalize_exercise;
 mod exercise_mapping;
 mod sync;
 
@@ -831,11 +833,14 @@ impl MyApp {
 
     /// Return entries that match the current filters and the selected exercises.
     fn filtered_selected_entries(&self) -> Vec<WorkoutEntry> {
+        let selected: Vec<String> = self
+            .selected_exercises
+            .iter()
+            .map(|s| normalize_exercise(s))
+            .collect();
         self.filtered_entries()
             .into_iter()
-            .filter(|e| {
-                self.selected_exercises.is_empty() || self.selected_exercises.contains(&e.exercise)
-            })
+            .filter(|e| selected.is_empty() || selected.contains(&normalize_exercise(&e.exercise)))
             .collect()
     }
 
@@ -2098,10 +2103,15 @@ impl App for MyApp {
                             if let Some(path) =
                                 FileDialog::new().add_filter("CSV", &["csv"]).save_file()
                             {
+                                let sel_norm: Vec<String> = self
+                                    .selected_exercises
+                                    .iter()
+                                    .map(|s| normalize_exercise(s))
+                                    .collect();
                                 let entries: Vec<WorkoutEntry> = self
                                     .filtered_entries()
                                     .into_iter()
-                                    .filter(|e| self.selected_exercises.contains(&e.exercise))
+                                    .filter(|e| sel_norm.contains(&normalize_exercise(&e.exercise)))
                                     .collect();
                                 if let Err(e) = save_entries_csv(&path, &entries) {
                                     log::error!("Failed to export entries: {e}");
