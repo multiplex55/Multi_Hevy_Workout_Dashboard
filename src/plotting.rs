@@ -1,6 +1,7 @@
 use chrono::{Datelike, NaiveDate};
-use egui::Color32;
+use egui::{Color32, Pos2, Sense, Shape, Stroke, Ui, Vec2};
 use egui_plot::{Bar, BarChart, HLine, Line, PlotPoints, PlotUi, Points, VLine};
+use egui::epaint::Hsva;
 
 use crate::body_parts::body_part_for;
 use crate::{
@@ -130,6 +131,20 @@ pub enum HistogramMetric {
     Rpe { bin: f64 },
     /// Histogram of repetition counts.
     Reps { bin: f64 },
+}
+
+/// Slice of a pie chart with metadata.
+pub struct PieSlice {
+    pub label: String,
+    pub value: f64,
+    pub start: f64,
+    pub sweep: f64,
+    pub color: Color32,
+}
+
+/// Simple pie chart representation.
+pub struct PieChart {
+    pub slices: Vec<PieSlice>,
 }
 
 /// Result of generating a plot line with an optional marker for the maximum value.
@@ -434,6 +449,84 @@ pub fn body_part_distribution(
         body_parts.push(part);
     }
     (BarChart::new(bars).name("Body Parts"), body_parts)
+}
+
+/// Create a pie chart showing the distribution of sets by primary body part.
+///
+/// Returns a [`PieChart`] where each slice corresponds to a body part and
+/// contains metadata about the slice.
+pub fn body_part_pie(
+    entries: &[WorkoutEntry],
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> PieChart {
+    use std::collections::BTreeMap;
+    use std::f64::consts::TAU;
+
+    let map = aggregate_sets_by_body_part(entries, start, end);
+    let total: f64 = map.values().sum::<usize>() as f64;
+    let mut angle = 0.0;
+    let mut slices = Vec::new();
+    let parts = map.len().max(1);
+    for (idx, (part, count)) in BTreeMap::from_iter(map).into_iter().enumerate() {
+        let sweep = if total > 0.0 {
+            (count as f64 / total) * TAU
+        } else {
+            0.0
+        };
+        let color: Color32 = Hsva::new(idx as f32 / parts as f32, 0.8, 0.8, 1.0).into();
+        slices.push(PieSlice {
+            label: part,
+            value: count as f64,
+            start: angle,
+            sweep,
+            color,
+        });
+        angle += sweep;
+    }
+    PieChart { slices }
+}
+
+/// Draw a pie chart and return the label of any clicked slice.
+pub fn draw_pie_chart(ui: &mut Ui, chart: &PieChart, size: Vec2) -> Option<String> {
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) / 2.0;
+    let painter = ui.painter();
+
+    for slice in &chart.slices {
+        let steps = ((slice.sweep.abs() / std::f64::consts::TAU) * 64.0).ceil() as usize;
+        let steps = steps.max(2);
+        let mut points: Vec<Pos2> = Vec::with_capacity(steps + 2);
+        points.push(center);
+        for i in 0..=steps {
+            let ang = slice.start + slice.sweep * i as f64 / steps as f64;
+            let x = center.x + radius * ang.cos() as f32;
+            let y = center.y + radius * ang.sin() as f32;
+            points.push(Pos2 { x, y });
+        }
+        painter.add(Shape::convex_polygon(points, slice.color, Stroke::NONE));
+    }
+
+    if response.clicked() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            let v = pos - center;
+            let dist = v.length();
+            if dist <= radius {
+                let mut ang = v.y.atan2(v.x) as f64;
+                if ang < 0.0 {
+                    ang += std::f64::consts::TAU;
+                }
+                for slice in &chart.slices {
+                    if ang >= slice.start && ang < slice.start + slice.sweep {
+                        return Some(slice.label.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 /// Generate scatter points of weight versus repetitions for the selected
@@ -1641,6 +1734,20 @@ mod tests {
 
         assert_eq!(aggregate_sets_by_body_part(&entries, None, None), expected);
         assert!((bounds.max()[1] - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_body_part_pie_counts() {
+        let entries = sample_entries();
+        let pie = body_part_pie(&entries, None, None);
+        let mut map = std::collections::HashMap::new();
+        for s in &pie.slices {
+            map.insert(s.label.clone(), s.value as usize);
+        }
+        assert_eq!(map.get("Chest"), Some(&1));
+        assert_eq!(map.get("Quads"), Some(&2));
+        let total_sweep: f64 = pie.slices.iter().map(|s| s.sweep).sum();
+        assert!((total_sweep - std::f64::consts::TAU).abs() < 1e-6);
     }
 
     #[test]

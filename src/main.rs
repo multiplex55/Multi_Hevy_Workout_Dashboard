@@ -23,10 +23,10 @@ mod plotting;
 use plotting::{
     HistogramMetric, OneRmFormula, SmoothingMethod, VolumeAggregation, XAxis, YAxis,
     aggregated_volume_points, average_rpe_line, body_part_distribution, body_part_volume_line,
-    body_part_volume_trend, estimated_1rm_line, exercise_volume_line, forecast_line_points,
-    histogram, sets_per_day_bar, training_volume_line, trend_line_points, unique_exercises,
-    weekly_summary_plot, weight_over_time_line, weight_reps_scatter, draw_crosshair,
-    format_hover_text,
+    body_part_pie, body_part_volume_trend, estimated_1rm_line, exercise_volume_line,
+    forecast_line_points, histogram, sets_per_day_bar, training_volume_line, trend_line_points,
+    unique_exercises, weekly_summary_plot, weight_over_time_line, weight_reps_scatter,
+    draw_crosshair, draw_pie_chart, format_hover_text,
 };
 mod capture;
 use capture::{crop_image, save_png};
@@ -977,7 +977,7 @@ impl MyApp {
     }
 
     fn draw_plot(
-        &self,
+        &mut self,
         ctx: &egui::Context,
         ui: &mut egui::Ui,
         filtered: &[WorkoutEntry],
@@ -1506,6 +1506,11 @@ impl MyApp {
                         self.settings.start_date,
                         self.settings.end_date,
                     );
+                    let pie = body_part_pie(
+                        filtered,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    );
                     let bp_for_axis = body_parts.clone();
                     ui.heading("Body Part Distribution");
                     let resp = Plot::new("body_part_distribution_plot")
@@ -1523,7 +1528,13 @@ impl MyApp {
                         .show(ui, |plot_ui| {
                             plot_ui.bar_chart(bars);
                         });
-
+                    if let Some(bp) = draw_pie_chart(
+                        ui,
+                        &pie,
+                        egui::vec2(self.settings.plot_width, self.settings.plot_height),
+                    ) {
+                        self.settings.body_part_filter = Some(bp);
+                    }
                     first_resp.get_or_insert(resp);
                 }
 
