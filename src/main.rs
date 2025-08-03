@@ -3337,55 +3337,64 @@ impl App for MyApp {
                         egui::CollapsingHeader::new("Filtering")
                             .default_open(true)
                             .show(ui, |ui| {
-                                egui::Grid::new("filter_grid")
-                                    .num_columns(2)
+                                egui::ScrollArea::horizontal()
+                                    .max_width(600.0)
                                     .show(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.label("Set type filter:");
-                                            let prev = self.settings.set_type_filter.clone();
-                                            egui::ComboBox::from_id_source("set_type_filter_combo")
-                                                .selected_text(prev.as_deref().unwrap_or("All"))
-                                                .show_ui(ui, |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.set_type_filter,
-                                                        None::<String>,
-                                                        "All",
-                                                    );
-                                                    for st in &self.set_types {
+                                        egui::Grid::new("filter_grid")
+                                            .num_columns(2)
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Set type filter:");
+                                                    let prev =
+                                                        self.settings.set_type_filter.clone();
+                                                    egui::ComboBox::from_id_source(
+                                                        "set_type_filter_combo",
+                                                    )
+                                                    .selected_text(prev.as_deref().unwrap_or("All"))
+                                                    .show_ui(ui, |ui| {
                                                         ui.selectable_value(
                                                             &mut self.settings.set_type_filter,
-                                                            Some(st.clone()),
-                                                            st,
+                                                            None::<String>,
+                                                            "All",
                                                         );
+                                                        for st in &self.set_types {
+                                                            ui.selectable_value(
+                                                                &mut self.settings.set_type_filter,
+                                                                Some(st.clone()),
+                                                                st,
+                                                            );
+                                                        }
+                                                    });
+                                                    if prev != self.settings.set_type_filter {
+                                                        self.settings_dirty = true;
                                                     }
                                                 });
-                                            if prev != self.settings.set_type_filter {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label("Superset id:");
-                                            let prev = self.settings.superset_filter.clone();
-                                            egui::ComboBox::from_id_source("superset_filter_combo")
-                                                .selected_text(prev.as_deref().unwrap_or("All"))
-                                                .show_ui(ui, |ui| {
-                                                    ui.selectable_value(
-                                                        &mut self.settings.superset_filter,
-                                                        None::<String>,
-                                                        "All",
-                                                    );
-                                                    for id in &self.superset_ids {
+                                                ui.horizontal(|ui| {
+                                                    ui.label("Superset id:");
+                                                    let prev =
+                                                        self.settings.superset_filter.clone();
+                                                    egui::ComboBox::from_id_source(
+                                                        "superset_filter_combo",
+                                                    )
+                                                    .selected_text(prev.as_deref().unwrap_or("All"))
+                                                    .show_ui(ui, |ui| {
                                                         ui.selectable_value(
                                                             &mut self.settings.superset_filter,
-                                                            Some(id.clone()),
-                                                            id,
+                                                            None::<String>,
+                                                            "All",
                                                         );
+                                                        for id in &self.superset_ids {
+                                                            ui.selectable_value(
+                                                                &mut self.settings.superset_filter,
+                                                                Some(id.clone()),
+                                                                id,
+                                                            );
+                                                        }
+                                                    });
+                                                    if prev != self.settings.superset_filter {
+                                                        self.settings_dirty = true;
                                                     }
                                                 });
-                                            if prev != self.settings.superset_filter {
-                                                self.settings_dirty = true;
-                                            }
-                                        });
                                         ui.end_row();
 
                                         ui.horizontal(|ui| {
@@ -3661,6 +3670,7 @@ impl App for MyApp {
                                         });
                                         ui.end_row();
                                     });
+                                });
                             });
 
                         ui.separator();
