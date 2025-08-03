@@ -1,6 +1,7 @@
 // Module for analyzing workout data
 use crate::WorkoutEntry;
 use crate::body_parts::body_part_for;
+use crate::exercise_utils::normalize_exercise;
 use crate::plotting::OneRmFormula;
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -155,8 +156,10 @@ pub fn aggregate_rep_counts(
     end: Option<NaiveDate>,
 ) -> BTreeMap<u32, usize> {
     let mut map: BTreeMap<u32, usize> = BTreeMap::new();
+    let normalized: Vec<String> = exercises.iter().map(|s| normalize_exercise(s)).collect();
     for e in entries {
-        if exercises.is_empty() || exercises.iter().any(|ex| ex == &e.exercise) {
+        let ex_name = normalize_exercise(&e.exercise);
+        if normalized.is_empty() || normalized.iter().any(|ex| ex == &ex_name) {
             if let Some(d) = parse_date(&e.date) {
                 if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
                     *map.entry(e.reps).or_insert(0) += 1;
@@ -661,7 +664,7 @@ mod tests {
     #[test]
     fn test_aggregate_rep_counts() {
         let entries = sample_entries();
-        let ex = vec!["Squat".to_string(), "Bench".to_string()];
+        let ex = vec!["squat".to_string(), "BENCH".to_string()];
         let map = aggregate_rep_counts(&entries, &ex, None, None);
         assert_eq!(map.get(&5), Some(&3));
 
