@@ -1597,7 +1597,10 @@ mod tests {
         );
         let lw = res.into_iter().next().unwrap();
         assert_eq!(lw.records.len(), 2);
-        assert_eq!(lw.records[0].date, NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert_eq!(
+            lw.records[0].date,
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()
+        );
         assert_eq!(lw.records[0].weight, 100.0);
         assert_eq!(lw.records[0].reps, 5);
     }
