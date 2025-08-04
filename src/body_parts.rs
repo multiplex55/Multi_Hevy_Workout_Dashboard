@@ -1,8 +1,8 @@
 use phf::phf_map;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
-use crate::exercise_mapping;
+use crate::{WorkoutEntry, exercise_mapping};
 
 /// Type of exercise based on muscle engagement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -297,4 +297,60 @@ pub fn equipment_for(exercise: &str) -> Option<Equipment> {
 /// Return the high level category for an exercise from custom mappings.
 pub fn category_for(exercise: &str) -> Option<String> {
     exercise_mapping::get(exercise).map(|m| m.category)
+}
+
+/// Iterate over the provided workouts and ensure the muscle mapping for each
+/// exercise reflects the latest built-in defaults.
+///
+/// For every unique exercise in `workouts` this will look up the static
+/// [`ExerciseInfo`] and overwrite the primary and secondary muscle groups in the
+/// persistent [`exercise_mapping`] store. The existing category is preserved.
+///
+/// The function returns the number of exercises that were updated. Callers are
+/// responsible for persisting changes via [`exercise_mapping::save`].
+pub fn update_mappings_from_workouts(workouts: &[WorkoutEntry]) -> usize {
+    let mut updated = 0;
+    let mut seen: HashSet<String> = HashSet::new();
+    for w in workouts {
+        if !seen.insert(w.exercise.clone()) {
+            continue;
+        }
+        if let Some(info) = info_for(&w.exercise) {
+            let mut entry = exercise_mapping::get(&w.exercise).unwrap_or_default();
+            let primary = info.primary.to_string();
+            let secondary: Vec<String> = info.secondary.iter().map(|s| s.to_string()).collect();
+            if entry.primary != primary || entry.secondary != secondary {
+                entry.primary = primary;
+                entry.secondary = secondary;
+                exercise_mapping::set(w.exercise.clone(), entry);
+                updated += 1;
+            }
+        }
+    }
+    updated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RawWorkoutRow;
+
+    #[test]
+    fn updates_mappings() {
+        let workout = WorkoutEntry {
+            date: "2024-01-01".into(),
+            exercise: "Barbell Bench Press".into(),
+            weight: Some(100.0),
+            reps: Some(5),
+            raw: RawWorkoutRow::default(),
+        };
+        // Ensure clean state
+        exercise_mapping::remove(&workout.exercise);
+        let updated = update_mappings_from_workouts(&[workout]);
+        assert_eq!(updated, 1);
+        let mapping = exercise_mapping::get("Barbell Bench Press").unwrap();
+        assert_eq!(mapping.primary, "Chest");
+        assert!(mapping.secondary.contains(&"Triceps".to_string()));
+        exercise_mapping::remove("Barbell Bench Press");
+    }
 }

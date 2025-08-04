@@ -2144,6 +2144,18 @@ impl App for MyApp {
                         self.show_about = true;
                         ui.close_menu();
                     }
+                    if ui.button("Reprocess Workouts").clicked() {
+                        let updated = body_parts::update_mappings_from_workouts(&self.workouts);
+                        if updated > 0 {
+                            exercise_mapping::save();
+                            self.stats = compute_stats(
+                                &self.workouts,
+                                self.settings.start_date,
+                                self.settings.end_date,
+                            );
+                        }
+                        ui.close_menu();
+                    }
                     ui.menu_button("Export", |ui| {
                         if ui.button("Export Stats").clicked() {
                             if let Some(path) = FileDialog::new()
