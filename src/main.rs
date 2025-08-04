@@ -533,7 +533,7 @@ struct MyApp {
     capture_rect: Option<egui::Rect>,
     settings_dirty: bool,
     show_mapping: bool,
-    mapping_exercise: String,
+    mapping_exercises: Vec<String>,
     mapping_dirty: bool,
     mapping_entry: exercise_mapping::MuscleMapping,
     pr_toast_start: Option<Instant>,
@@ -587,7 +587,7 @@ impl Default for MyApp {
             capture_rect: None,
             settings_dirty: false,
             show_mapping,
-            mapping_exercise: String::new(),
+            mapping_exercises: Vec::new(),
             mapping_dirty: false,
             mapping_entry: exercise_mapping::MuscleMapping::default(),
             pr_toast_start: None,
@@ -3368,23 +3368,59 @@ impl App for MyApp {
                 .resizable(true)
                 .show(ctx, |ui| {
                     let list = unique_exercises(&self.workouts, None, None);
-                    let mut selected = self.mapping_exercise.clone();
-                    egui::ComboBox::from_id_source("map_exercise_combo")
-                        .selected_text(if selected.is_empty() {
-                            "Select".into()
-                        } else {
-                            selected.clone()
-                        })
-                        .show_ui(ui, |ui| {
-                            for e in &list {
-                                ui.selectable_value(&mut selected, e.clone(), e);
-                            }
+                    let row_height = ui.text_style_height(&egui::TextStyle::Body);
+                    egui::ScrollArea::vertical()
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            egui_extras::TableBuilder::new(ui)
+                                .striped(true)
+                                .column(egui_extras::Column::auto())
+                                .column(egui_extras::Column::remainder())
+                                .column(egui_extras::Column::remainder())
+                                .column(egui_extras::Column::remainder())
+                                .header(row_height, |mut header| {
+                                    header.col(|ui| {
+                                        ui.label("");
+                                    });
+                                    header.col(|ui| {
+                                        ui.label("Exercise");
+                                    });
+                                    header.col(|ui| {
+                                        ui.label("Primary");
+                                    });
+                                    header.col(|ui| {
+                                        ui.label("Secondary");
+                                    });
+                                })
+                                .body(|mut body| {
+                                    for e in &list {
+                                        let mapping = exercise_mapping::get(e).unwrap_or_default();
+                                        body.row(row_height, |mut row| {
+                                            row.col(|ui| {
+                                                let mut sel = self.mapping_exercises.contains(e);
+                                                if ui.checkbox(&mut sel, "").changed() {
+                                                    if sel {
+                                                        self.mapping_exercises.push(e.clone());
+                                                    } else {
+                                                        self.mapping_exercises.retain(|x| x != e);
+                                                    }
+                                                }
+                                            });
+                                            row.col(|ui| {
+                                                ui.label(e);
+                                            });
+                                            row.col(|ui| {
+                                                ui.label(mapping.primary);
+                                            });
+                                            row.col(|ui| {
+                                                ui.label(mapping.secondary.join(", "));
+                                            });
+                                        });
+                                    }
+                                });
                         });
-                    if selected != self.mapping_exercise {
-                        self.mapping_exercise = selected.clone();
-                        self.mapping_entry = exercise_mapping::get(&selected).unwrap_or_default();
-                    }
-                    if !self.mapping_exercise.is_empty() {
+
+                    if !self.mapping_exercises.is_empty() {
                         let muscles = body_parts::primary_muscle_groups();
                         egui::ComboBox::from_id_source("map_primary")
                             .selected_text(if self.mapping_entry.primary.is_empty() {
@@ -3418,16 +3454,24 @@ impl App for MyApp {
                             ui.label("Category:");
                             ui.text_edit_singleline(&mut self.mapping_entry.category);
                         });
-                        if ui.button("Save Mapping").clicked() {
-                            exercise_mapping::set(
-                                self.mapping_exercise.clone(),
-                                self.mapping_entry.clone(),
-                            );
-                            self.mapping_dirty = true;
-                        }
-                        if ui.button("Remove Mapping").clicked() {
-                            exercise_mapping::remove(&self.mapping_exercise);
-                            self.mapping_dirty = true;
+                        ui.horizontal(|ui| {
+                            if ui.button("Save Mapping").clicked() {
+                                for ex in &self.mapping_exercises {
+                                    exercise_mapping::set(ex.clone(), self.mapping_entry.clone());
+                                }
+                                self.mapping_dirty = true;
+                            }
+                            if ui.button("Remove Mapping").clicked() {
+                                for ex in &self.mapping_exercises {
+                                    exercise_mapping::remove(ex);
+                                }
+                                self.mapping_dirty = true;
+                            }
+                        });
+                    }
+                    if ui.button("Open Config Directory").clicked() {
+                        if let Some(dir) = dirs::config_dir() {
+                            let _ = open::that(dir);
                         }
                     }
                 });
