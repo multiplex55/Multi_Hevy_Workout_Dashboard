@@ -554,6 +554,9 @@ pub fn draw_pie_chart(ui: &mut Ui, chart: &PieChart, size: Vec2) -> Option<Strin
 /// All matching entries within the optional date range are included. Weights
 /// are converted using `unit` and plotted on the x-axis with reps on the
 /// y-axis.
+const MAX_WEIGHT: f64 = 10_000.0;
+const MAX_REPS: f64 = 1_000.0;
+
 pub fn weight_reps_scatter(
     entries: &[WorkoutEntry],
     exercises: &[String],
@@ -569,7 +572,13 @@ pub fn weight_reps_scatter(
         if normalized.is_empty() || normalized.iter().any(|ex| ex == &ex_name) {
             if let Ok(d) = NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
                 if start.map_or(true, |s| d >= s) && end.map_or(true, |e2| d <= e2) {
-                    pts.push([e.weight.unwrap() as f64 * f, e.reps.unwrap() as f64]);
+                    if let (Some(w), Some(r)) = (e.weight, e.reps) {
+                        let w = w as f64 * f;
+                        let r = r as f64;
+                        if w.is_finite() && r.is_finite() && w > 0.0 && r > 0.0 {
+                            pts.push([w.clamp(0.0, MAX_WEIGHT), r.clamp(0.0, MAX_REPS)]);
+                        }
+                    }
                 }
             }
         }
@@ -1235,6 +1244,51 @@ mod tests {
         let d3 = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").unwrap();
         let expected = vec![[d3.num_days_from_ce() as f64, 525.0]];
         assert_eq!(points, expected);
+    }
+
+    #[test]
+    fn scatter_skips_invalid_entries() {
+        fn entry(weight: Option<f32>, reps: Option<u32>) -> WorkoutEntry {
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight,
+                reps,
+                raw: RawWorkoutRow::default(),
+            }
+        }
+
+        let entries = vec![
+            entry(Some(100.0), Some(10)),
+            entry(Some(f32::NAN), Some(10)),
+            entry(Some(-50.0), Some(5)),
+            entry(Some(100.0), Some(0)),
+        ];
+
+        let pts = weight_reps_scatter(&entries, &[], None, None, WeightUnit::Lbs);
+        let bounds = PlotItem::bounds(&pts);
+        assert_eq!(bounds.min(), [100.0, 10.0]);
+        assert_eq!(bounds.max(), [100.0, 10.0]);
+    }
+
+    #[test]
+    fn scatter_clamps_extreme_values() {
+        fn entry(weight: f32, reps: u32) -> WorkoutEntry {
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: Some(weight),
+                reps: Some(reps),
+                raw: RawWorkoutRow::default(),
+            }
+        }
+
+        let entries = vec![entry(100.0, 10), entry(50_000.0, 5_000)];
+
+        let pts = weight_reps_scatter(&entries, &[], None, None, WeightUnit::Lbs);
+        let bounds = PlotItem::bounds(&pts);
+        assert_eq!(bounds.min(), [100.0, 10.0]);
+        assert_eq!(bounds.max(), [super::MAX_WEIGHT, super::MAX_REPS]);
     }
 
     #[test]
