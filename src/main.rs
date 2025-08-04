@@ -305,6 +305,7 @@ struct Settings {
     set_type_filter: Option<String>,
     superset_filter: Option<String>,
     body_part_filter: Option<String>,
+    exercise_filter: Option<String>,
     exercise_type_filter: Option<ExerciseType>,
     difficulty_filter: Option<body_parts::Difficulty>,
     equipment_filter: Option<body_parts::Equipment>,
@@ -449,6 +450,7 @@ impl Default for Settings {
             set_type_filter: None,
             superset_filter: None,
             body_part_filter: None,
+            exercise_filter: None,
             exercise_type_filter: None,
             difficulty_filter: None,
             equipment_filter: None,
@@ -927,6 +929,11 @@ impl MyApp {
             match e.equipment() {
                 Some(d) if d == eq => {}
                 _ => return false,
+            }
+        }
+        if let Some(ref ex) = self.settings.exercise_filter {
+            if normalize_exercise(&e.exercise) != normalize_exercise(ex) {
+                return false;
             }
         }
         true
@@ -4229,6 +4236,28 @@ impl App for MyApp {
                                                 ui.end_row();
 
                                                 ui.horizontal(|ui| {
+                                                    ui.label("Exercise:");
+                                                    let mut ex_filter = self
+                                                        .settings
+                                                        .exercise_filter
+                                                        .clone()
+                                                        .unwrap_or_default();
+                                                    if ui
+                                                        .text_edit_singleline(&mut ex_filter)
+                                                        .changed()
+                                                    {
+                                                        self.settings.exercise_filter =
+                                                            if ex_filter.trim().is_empty() {
+                                                                None
+                                                            } else {
+                                                                Some(ex_filter.trim().to_string())
+                                                            };
+                                                        self.settings_dirty = true;
+                                                    }
+                                                });
+                                                ui.end_row();
+
+                                                ui.horizontal(|ui| {
                                                     ui.label("Tags:");
                                                     let mut tags = self
                                                         .settings
@@ -4949,6 +4978,34 @@ Week 1,\"01 Jan 2024, 10:10\",,desc,Bench Press,,,2,working,135,5,,,\n";
         let filtered = app.filtered_entries();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].exercise, "Lying Leg Curl (Machine)");
+    }
+
+    #[test]
+    fn exercise_filter() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: Some(100.0),
+                reps: Some(5),
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-02".into(),
+                exercise: "Squat".into(),
+                weight: Some(150.0),
+                reps: Some(5),
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let mut app = MyApp {
+            workouts: entries,
+            ..Default::default()
+        };
+        app.settings.exercise_filter = Some("bench".into());
+        let filtered = app.filtered_entries();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].exercise, "Bench");
     }
 
     #[test]
