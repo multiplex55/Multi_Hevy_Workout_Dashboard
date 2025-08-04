@@ -2517,11 +2517,17 @@ impl App for MyApp {
                     ui.label("Exercises:");
                     let resp = ui.menu_button(
                         if self.selected_exercises.is_empty() {
-                            "Select Exercises".to_string()
+                            "All Exercises".to_string()
                         } else {
                             self.selected_exercises.join(", ")
                         },
                         |ui| {
+                            if ui.button("All Exercises").clicked() {
+                                self.selected_exercises.clear();
+                                self.update_selected_stats();
+                                ui.close_menu();
+                            }
+                            ui.separator();
                             for (part, exs) in &by_body_part {
                                 ui.collapsing(part, |ui| {
                                     for ex in exs {
@@ -2549,23 +2555,29 @@ impl App for MyApp {
                         },
                     );
                     let _ = ctx.input(|i| i.pointer.interact_pos());
-                    resp.response.context_menu(|ui| {
-                        if ui.button("Clear selection").clicked() {
-                            self.selected_exercises.clear();
-                            self.update_selected_stats();
-                            ui.close_menu();
-                        }
-                        for ex in self.selected_exercises.clone() {
-                            let label = format!("Remove {ex}");
-                            if ui.button(label).clicked() {
-                                self.selected_exercises.retain(|e| e != &ex);
+                    resp.response
+                        .on_hover_text("Select specific exercises or show all")
+                        .context_menu(|ui| {
+                            if ui.button("Show All Exercises").clicked() {
+                                self.selected_exercises.clear();
                                 self.update_selected_stats();
                                 ui.close_menu();
                             }
-                        }
-                    });
+                            for ex in self.selected_exercises.clone() {
+                                let label = format!("Remove {ex}");
+                                if ui.button(label).clicked() {
+                                    self.selected_exercises.retain(|e| e != &ex);
+                                    self.update_selected_stats();
+                                    ui.close_menu();
+                                }
+                            }
+                        });
 
-                    if ui.button("Clear Exercises").clicked() {
+                    if ui
+                        .button("Show All Exercises")
+                        .on_hover_text("Clear selection and display all")
+                        .clicked()
+                    {
                         self.selected_exercises.clear();
                         self.settings.selected_exercises.clear();
                         self.settings_dirty = true;
@@ -2590,8 +2602,8 @@ impl App for MyApp {
 
                         ui.separator();
                         if self.selected_exercises.is_empty() {
-                            ui.label("No exercises selected");
-                            ui.label("Select exercises from the dropdown");
+                            ui.label("Selected: All Exercises")
+                                .on_hover_text("An empty selection displays every exercise");
                         } else {
                             ui.label(format!("Selected: {}", self.selected_exercises.join(", ")));
                         }
@@ -2881,10 +2893,14 @@ impl App for MyApp {
             if !self.workouts.is_empty() {
                 let filtered = self.filtered_entries();
 
-                if self.selected_exercises.is_empty() {
-                    ui.label("No exercises selected");
+                let sel: Vec<String> = if self.selected_exercises.is_empty() {
+                    unique_exercises(&filtered, self.settings.start_date, self.settings.end_date)
                 } else {
-                    let sel: Vec<String> = self.selected_exercises.clone();
+                    self.selected_exercises.clone()
+                };
+                if sel.is_empty() {
+                    ui.label("No exercises available");
+                } else {
                     let plot_resp = self.draw_plot(
                         ctx,
                         ui,
@@ -2896,7 +2912,11 @@ impl App for MyApp {
                         self.capture_rect = Some(plot_resp.response.rect);
                         ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
                     }
-                    if ui.button("Clear Exercises").clicked() {
+                    if ui
+                        .button("Show All Exercises")
+                        .on_hover_text("Clear selection and display all")
+                        .clicked()
+                    {
                         self.selected_exercises.clear();
                         self.settings.selected_exercises.clear();
                         self.settings_dirty = true;
@@ -3167,10 +3187,18 @@ impl App for MyApp {
                 .open(&mut open)
                 .vscroll(true)
                 .show(ctx, |ui| {
-                    if self.selected_exercises.is_empty() {
-                        ui.label("No exercises selected");
+                    let sel: Vec<String> = if self.selected_exercises.is_empty() {
+                        unique_exercises(
+                            &filtered,
+                            self.settings.start_date,
+                            self.settings.end_date,
+                        )
                     } else {
-                        let sel: Vec<String> = self.selected_exercises.clone();
+                        self.selected_exercises.clone()
+                    };
+                    if sel.is_empty() {
+                        ui.label("No exercises available");
+                    } else {
                         let plot_resp = self.draw_plot(
                             ctx,
                             ui,
@@ -3194,10 +3222,18 @@ impl App for MyApp {
                 .open(&mut open)
                 .vscroll(true)
                 .show(ctx, |ui| {
-                    if self.selected_exercises.is_empty() {
-                        ui.label("No exercises selected");
+                    let sel = if self.selected_exercises.is_empty() {
+                        unique_exercises(
+                            &filtered,
+                            self.settings.start_date,
+                            self.settings.end_date,
+                        )
                     } else {
-                        let sel = self.selected_exercises.clone();
+                        self.selected_exercises.clone()
+                    };
+                    if sel.is_empty() {
+                        ui.label("No exercises available");
+                    } else {
                         let cols = self.settings.grid_cols.max(1);
                         let rows = self.settings.grid_rows.max(1);
                         let total_width = ui.available_width();
