@@ -201,6 +201,77 @@ fn default_panel_width() -> f32 {
     200.0
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+enum ExerciseSelection {
+    All,
+    None,
+    Selected(Vec<String>),
+}
+
+impl Default for ExerciseSelection {
+    fn default() -> Self {
+        ExerciseSelection::All
+    }
+}
+
+impl ExerciseSelection {
+    fn selected(&self) -> &[String] {
+        match self {
+            ExerciseSelection::Selected(v) => v,
+            _ => &[],
+        }
+    }
+
+    fn contains(&self, ex: &str) -> bool {
+        matches!(self, ExerciseSelection::Selected(v) if v.iter().any(|s| s == ex))
+    }
+
+    fn push(&mut self, ex: String) {
+        match self {
+            ExerciseSelection::Selected(v) => {
+                if !v.contains(&ex) {
+                    v.push(ex);
+                }
+            }
+            ExerciseSelection::All | ExerciseSelection::None => {
+                *self = ExerciseSelection::Selected(vec![ex]);
+            }
+        }
+    }
+
+    fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&String) -> bool,
+    {
+        if let ExerciseSelection::Selected(v) = self {
+            v.retain(|e| f(e));
+            if v.is_empty() {
+                *self = ExerciseSelection::All;
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        *self = ExerciseSelection::All;
+    }
+
+    fn is_all(&self) -> bool {
+        matches!(self, ExerciseSelection::All)
+    }
+
+    fn is_none(&self) -> bool {
+        matches!(self, ExerciseSelection::None)
+    }
+
+    fn join(&self, sep: &str) -> String {
+        self.selected().join(sep)
+    }
+
+    fn clone_vec(&self) -> Vec<String> {
+        self.selected().to_vec()
+    }
+}
+
 /// Persistent configuration for user preferences and plot visibility.
 ///
 /// The values are serialized to a JSON file so choices like `show_rpe`
@@ -333,7 +404,7 @@ struct Settings {
     check_prs: bool,
     github_repo: Option<String>,
     last_pr: Option<u64>,
-    selected_exercises: Vec<String>,
+    selected_exercises: ExerciseSelection,
     table_filter: String,
     sort_column: SortColumn,
     sort_ascending: bool,
@@ -475,7 +546,7 @@ impl Default for Settings {
             check_prs: false,
             github_repo: None,
             last_pr: None,
-            selected_exercises: Vec::new(),
+            selected_exercises: ExerciseSelection::All,
             table_filter: String::new(),
             sort_column: SortColumn::Date,
             sort_ascending: true,
@@ -515,7 +586,7 @@ enum SummarySort {
 struct MyApp {
     workouts: Vec<WorkoutEntry>,
     stats: BasicStats,
-    selected_exercises: Vec<String>,
+    selected_exercises: ExerciseSelection,
     set_types: Vec<String>,
     superset_ids: Vec<String>,
     search_query: String,
@@ -574,7 +645,7 @@ impl Default for MyApp {
         let mut app = Self {
             workouts: Vec::new(),
             stats: BasicStats::default(),
-            selected_exercises: Vec::new(),
+            selected_exercises: ExerciseSelection::All,
             set_types: Vec::new(),
             superset_ids: Vec::new(),
             search_query: String::new(),
@@ -970,15 +1041,17 @@ impl MyApp {
 
     /// Return entries that match the current filters and the selected exercises.
     fn filtered_selected_entries(&self) -> Vec<WorkoutEntry> {
-        let selected: Vec<String> = self
-            .selected_exercises
-            .iter()
-            .map(|s| normalize_exercise(s))
-            .collect();
-        self.filtered_entries()
-            .into_iter()
-            .filter(|e| selected.is_empty() || selected.contains(&normalize_exercise(&e.exercise)))
-            .collect()
+        match &self.selected_exercises {
+            ExerciseSelection::None => Vec::new(),
+            ExerciseSelection::All => self.filtered_entries(),
+            ExerciseSelection::Selected(sel) => {
+                let selected: Vec<String> = sel.iter().map(|s| normalize_exercise(s)).collect();
+                self.filtered_entries()
+                    .into_iter()
+                    .filter(|e| selected.contains(&normalize_exercise(&e.exercise)))
+                    .collect()
+            }
+        }
     }
 
     /// Recompute `self.stats` using only the selected exercises.
@@ -1026,13 +1099,15 @@ impl MyApp {
                 }
                 if let Some(ref ex) = ex_norm {
                     normalize_exercise(&e.exercise) == *ex
-                } else if self.selected_exercises.is_empty() {
-                    true
                 } else {
-                    let ne = normalize_exercise(&e.exercise);
-                    self.selected_exercises
-                        .iter()
-                        .any(|s| normalize_exercise(s) == ne)
+                    match &self.selected_exercises {
+                        ExerciseSelection::All => true,
+                        ExerciseSelection::None => false,
+                        ExerciseSelection::Selected(sel) => {
+                            let ne = normalize_exercise(&e.exercise);
+                            sel.iter().any(|s| normalize_exercise(s) == ne)
+                        }
+                    }
                 }
             })
             .collect();
@@ -2403,16 +2478,7 @@ impl App for MyApp {
                             if let Some(path) =
                                 FileDialog::new().add_filter("CSV", &["csv"]).save_file()
                             {
-                                let sel_norm: Vec<String> = self
-                                    .selected_exercises
-                                    .iter()
-                                    .map(|s| normalize_exercise(s))
-                                    .collect();
-                                let entries: Vec<WorkoutEntry> = self
-                                    .filtered_entries()
-                                    .into_iter()
-                                    .filter(|e| sel_norm.contains(&normalize_exercise(&e.exercise)))
-                                    .collect();
+                                let entries = self.filtered_selected_entries();
                                 if let Err(e) = save_entries_csv(&path, &entries) {
                                     log::error!("Failed to export entries: {e}");
                                 }
@@ -2520,93 +2586,105 @@ impl App for MyApp {
                         exercises.iter().take(3).map(|(e, _)| e.clone()).collect();
 
                     ui.label("Exercises:");
-                    let resp = ui.menu_button(
-                        if self.selected_exercises.is_empty() {
-                            "All Exercises".to_string()
-                        } else {
-                            self.selected_exercises.join(", ")
-                        },
-                        |ui| {
-                            if ui.button("All Exercises").clicked() {
-                                self.selected_exercises.clear();
-                                self.update_selected_stats();
-                                ui.close_menu();
+                    let menu_label = match &self.selected_exercises {
+                        ExerciseSelection::All => "All Exercises".to_string(),
+                        ExerciseSelection::None => "No Exercises".to_string(),
+                        ExerciseSelection::Selected(list) => list.join(", "),
+                    };
+                    let resp = ui.menu_button(menu_label, |ui| {
+                        if ui.button("All Exercises").clicked() {
+                            self.selected_exercises = ExerciseSelection::All;
+                            self.update_selected_stats();
+                            ui.close_menu();
+                        }
+                        if ui.button("None").clicked() {
+                            self.selected_exercises = ExerciseSelection::None;
+                            self.update_selected_stats();
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        for (part, exs) in &by_body_part {
+                            let group_exs = exs.clone();
+                            let all_selected = self.selected_exercises.is_all()
+                                || group_exs
+                                    .iter()
+                                    .all(|e| self.selected_exercises.contains(e));
+                            let mut label = part.clone();
+                            if all_selected {
+                                label.push_str(" ✓");
                             }
-                            ui.separator();
-                            for (part, exs) in &by_body_part {
-                                let group_exs = exs.clone();
-                                let all_selected = self.selected_exercises.is_empty()
-                                    || group_exs
-                                        .iter()
-                                        .all(|e| self.selected_exercises.contains(e));
-                                let mut label = part.clone();
-                                if all_selected {
-                                    label.push_str(" ✓");
-                                }
-                                ui.collapsing(label, |ui| {
-                                    ui.horizontal(|ui| {
-                                        if ui.button("Select All").clicked() {
-                                            if self.selected_exercises.is_empty() {
-                                                self.selected_exercises = group_exs.clone();
-                                            } else {
-                                                for ex in &group_exs {
-                                                    if !self.selected_exercises.contains(ex) {
-                                                        self.selected_exercises.push(ex.clone());
-                                                    }
-                                                }
-                                            }
-                                            self.update_selected_stats();
-                                        }
-                                        if ui.button("Deselect All").clicked() {
-                                            if self.selected_exercises.is_empty() {
-                                                let mut all: Vec<String> = unique_exercises(
-                                                    &self.workouts,
-                                                    self.settings.start_date,
-                                                    self.settings.end_date,
-                                                );
-                                                all.retain(|e| !group_exs.contains(e));
-                                                self.selected_exercises = all;
-                                            } else {
-                                                self.selected_exercises
-                                                    .retain(|e| !group_exs.contains(e));
-                                            }
-                                            self.update_selected_stats();
-                                        }
-                                    });
-                                    for ex in &group_exs {
-                                        let mut sel = self.selected_exercises.contains(ex);
-                                        let label = if top_matches.contains(ex)
-                                            && !self.search_query.is_empty()
+                            ui.collapsing(label, |ui| {
+                                ui.horizontal(|ui| {
+                                    if ui.button("Select All").clicked() {
+                                        if self.selected_exercises.is_all()
+                                            || self.selected_exercises.is_none()
                                         {
-                                            RichText::new(ex).color(egui::Color32::LIGHT_GREEN)
+                                            self.selected_exercises =
+                                                ExerciseSelection::Selected(group_exs.clone());
                                         } else {
-                                            RichText::new(ex)
-                                        };
-                                        if ui.add(egui::Checkbox::new(&mut sel, label)).changed() {
-                                            if sel {
+                                            for ex in &group_exs {
                                                 if !self.selected_exercises.contains(ex) {
                                                     self.selected_exercises.push(ex.clone());
                                                 }
-                                            } else {
-                                                self.selected_exercises.retain(|e| e != ex);
                                             }
-                                            self.update_selected_stats();
                                         }
+                                        self.update_selected_stats();
+                                    }
+                                    if ui.button("Deselect All").clicked() {
+                                        if self.selected_exercises.is_all() {
+                                            let mut all: Vec<String> = unique_exercises(
+                                                &self.workouts,
+                                                self.settings.start_date,
+                                                self.settings.end_date,
+                                            );
+                                            all.retain(|e| !group_exs.contains(e));
+                                            self.selected_exercises =
+                                                ExerciseSelection::Selected(all);
+                                        } else if self.selected_exercises.is_none() {
+                                            // nothing to do
+                                        } else {
+                                            self.selected_exercises
+                                                .retain(|e| !group_exs.contains(e));
+                                        }
+                                        self.update_selected_stats();
                                     }
                                 });
-                            }
-                        },
-                    );
+                                for ex in &group_exs {
+                                    let mut sel = self.selected_exercises.contains(ex);
+                                    let label = if top_matches.contains(ex)
+                                        && !self.search_query.is_empty()
+                                    {
+                                        RichText::new(ex).color(egui::Color32::LIGHT_GREEN)
+                                    } else {
+                                        RichText::new(ex)
+                                    };
+                                    if ui.add(egui::Checkbox::new(&mut sel, label)).changed() {
+                                        if sel {
+                                            self.selected_exercises.push(ex.clone());
+                                        } else {
+                                            self.selected_exercises.retain(|e| e != ex);
+                                        }
+                                        self.update_selected_stats();
+                                    }
+                                }
+                            });
+                        }
+                    });
                     let _ = ctx.input(|i| i.pointer.interact_pos());
                     resp.response
                         .on_hover_text("Select specific exercises or show all")
                         .context_menu(|ui| {
                             if ui.button("Show All Exercises").clicked() {
-                                self.selected_exercises.clear();
+                                self.selected_exercises = ExerciseSelection::All;
                                 self.update_selected_stats();
                                 ui.close_menu();
                             }
-                            for ex in self.selected_exercises.clone() {
+                            if ui.button("None").clicked() {
+                                self.selected_exercises = ExerciseSelection::None;
+                                self.update_selected_stats();
+                                ui.close_menu();
+                            }
+                            for ex in self.selected_exercises.clone_vec() {
                                 let label = format!("Remove {ex}");
                                 if ui.button(label).clicked() {
                                     self.selected_exercises.retain(|e| e != &ex);
@@ -2644,9 +2722,11 @@ impl App for MyApp {
                         }
 
                         ui.separator();
-                        if self.selected_exercises.is_empty() {
+                        if self.selected_exercises.is_all() {
                             ui.label("Selected: All Exercises")
                                 .on_hover_text("An empty selection displays every exercise");
+                        } else if self.selected_exercises.is_none() {
+                            ui.label("Selected: No Exercises");
                         } else {
                             ui.label(format!("Selected: {}", self.selected_exercises.join(", ")));
                         }
@@ -2936,10 +3016,14 @@ impl App for MyApp {
             if !self.workouts.is_empty() {
                 let filtered = self.filtered_entries();
 
-                let sel: Vec<String> = if self.selected_exercises.is_empty() {
-                    unique_exercises(&filtered, self.settings.start_date, self.settings.end_date)
-                } else {
-                    self.selected_exercises.clone()
+                let sel: Vec<String> = match &self.selected_exercises {
+                    ExerciseSelection::All => unique_exercises(
+                        &filtered,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    ),
+                    ExerciseSelection::None => Vec::new(),
+                    ExerciseSelection::Selected(v) => v.clone(),
                 };
                 if sel.is_empty() {
                     ui.label("No exercises available");
@@ -3230,14 +3314,14 @@ impl App for MyApp {
                 .open(&mut open)
                 .vscroll(true)
                 .show(ctx, |ui| {
-                    let sel: Vec<String> = if self.selected_exercises.is_empty() {
-                        unique_exercises(
+                    let sel: Vec<String> = match &self.selected_exercises {
+                        ExerciseSelection::All => unique_exercises(
                             &filtered,
                             self.settings.start_date,
                             self.settings.end_date,
-                        )
-                    } else {
-                        self.selected_exercises.clone()
+                        ),
+                        ExerciseSelection::None => Vec::new(),
+                        ExerciseSelection::Selected(v) => v.clone(),
                     };
                     if sel.is_empty() {
                         ui.label("No exercises available");
@@ -3265,14 +3349,14 @@ impl App for MyApp {
                 .open(&mut open)
                 .vscroll(true)
                 .show(ctx, |ui| {
-                    let sel = if self.selected_exercises.is_empty() {
-                        unique_exercises(
+                    let sel = match &self.selected_exercises {
+                        ExerciseSelection::All => unique_exercises(
                             &filtered,
                             self.settings.start_date,
                             self.settings.end_date,
-                        )
-                    } else {
-                        self.selected_exercises.clone()
+                        ),
+                        ExerciseSelection::None => Vec::new(),
+                        ExerciseSelection::Selected(v) => v.clone(),
                     };
                     if sel.is_empty() {
                         ui.label("No exercises available");
@@ -3507,7 +3591,7 @@ impl App for MyApp {
                             ui.label("Weight Trend");
                             ui.label("Volume Trend");
                             ui.end_row();
-                            for ex in &self.selected_exercises {
+                            for ex in self.selected_exercises.selected() {
                                 if let Some(s) = stats_map.get(ex) {
                                     ui.label(ex);
                                     ui.label(s.total_sets.to_string());
@@ -3537,7 +3621,7 @@ impl App for MyApp {
                                 ui.label(reps.to_string());
                             }
                             ui.end_row();
-                            for ex in &self.selected_exercises {
+                            for ex in self.selected_exercises.selected() {
                                 ui.label(ex);
                                 if let Some(rec) = rec_map.get(ex) {
                                     for reps in &rep_counts {
@@ -5064,7 +5148,7 @@ mod tests {
         s.check_prs = true;
         s.github_repo = Some("user/repo".into());
         s.last_pr = Some(5);
-        s.selected_exercises = vec!["Bench".into()];
+        s.selected_exercises = ExerciseSelection::Selected(vec!["Bench".into()]);
         s.table_filter = "bench".into();
         s.sort_column = SortColumn::Weight;
         s.sort_ascending = false;
