@@ -3731,12 +3731,18 @@ impl App for MyApp {
                             }
                         }
                         if ui.button("Import Mapping").clicked() {
-                            if let Some(path) =
-                                FileDialog::new().add_filter("JSON", &["json"]).pick_file()
+                            if let Some(paths) =
+                                FileDialog::new().add_filter("JSON", &["json"]).pick_files()
                             {
-                                if let Err(e) = exercise_mapping::import_all(&path) {
-                                    log::error!("Failed to import mapping: {e}");
+                                if let Err(e) = exercise_mapping::merge_files(&paths) {
+                                    log::error!("Failed to merge mappings: {e}");
+                                    self.pr_message =
+                                        Some(format!("Failed to merge mappings: {e}"));
+                                    self.pr_toast_start = Some(Instant::now());
                                 } else {
+                                    log::info!("Merged {} mapping files", paths.len());
+                                    self.pr_message = Some("Mappings merged".to_string());
+                                    self.pr_toast_start = Some(Instant::now());
                                     self.mapping_dirty = true;
                                 }
                             }
