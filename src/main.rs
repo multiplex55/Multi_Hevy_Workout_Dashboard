@@ -2534,8 +2534,46 @@ impl App for MyApp {
                             }
                             ui.separator();
                             for (part, exs) in &by_body_part {
-                                ui.collapsing(part, |ui| {
-                                    for ex in exs {
+                                let group_exs = exs.clone();
+                                let all_selected = self.selected_exercises.is_empty()
+                                    || group_exs
+                                        .iter()
+                                        .all(|e| self.selected_exercises.contains(e));
+                                let mut label = part.clone();
+                                if all_selected {
+                                    label.push_str(" ✓");
+                                }
+                                ui.collapsing(label, |ui| {
+                                    ui.horizontal(|ui| {
+                                        if ui.button("Select All").clicked() {
+                                            if self.selected_exercises.is_empty() {
+                                                self.selected_exercises = group_exs.clone();
+                                            } else {
+                                                for ex in &group_exs {
+                                                    if !self.selected_exercises.contains(ex) {
+                                                        self.selected_exercises.push(ex.clone());
+                                                    }
+                                                }
+                                            }
+                                            self.update_selected_stats();
+                                        }
+                                        if ui.button("Deselect All").clicked() {
+                                            if self.selected_exercises.is_empty() {
+                                                let mut all: Vec<String> = unique_exercises(
+                                                    &self.workouts,
+                                                    self.settings.start_date,
+                                                    self.settings.end_date,
+                                                );
+                                                all.retain(|e| !group_exs.contains(e));
+                                                self.selected_exercises = all;
+                                            } else {
+                                                self.selected_exercises
+                                                    .retain(|e| !group_exs.contains(e));
+                                            }
+                                            self.update_selected_stats();
+                                        }
+                                    });
+                                    for ex in &group_exs {
                                         let mut sel = self.selected_exercises.contains(ex);
                                         let label = if top_matches.contains(ex)
                                             && !self.search_query.is_empty()

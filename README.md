@@ -61,6 +61,7 @@ the workout date, exercise name, weight and reps.
   * Estimated one‑rep max over time
   * Sets per day (bar chart)
 * **Compare Window** – Open from the exercise menu to view each selected exercise in its own plot column for side‑by‑side comparison.
+* **Muscle Group Selection** – Each muscle group in the exercise menu includes **Select All** and **Deselect All** buttons for quick bulk selection.
 * **Raw Entry Table** – Open *Raw Entries* from the **File** menu to see every
   workout set in a sortable table. Columns can be sorted and the table respects
   the date range from the settings as well as an exercise filter.
