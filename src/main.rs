@@ -189,6 +189,14 @@ fn default_plot_height() -> f32 {
     200.0
 }
 
+fn default_grid_cols() -> usize {
+    1
+}
+
+fn default_grid_rows() -> usize {
+    1
+}
+
 fn default_panel_width() -> f32 {
     200.0
 }
@@ -280,6 +288,10 @@ struct Settings {
     plot_width: f32,
     #[serde(default = "default_plot_height")]
     plot_height: f32,
+    #[serde(default = "default_grid_cols")]
+    grid_cols: usize,
+    #[serde(default = "default_grid_rows")]
+    grid_rows: usize,
     #[serde(default)]
     volume_aggregation: VolumeAggregation,
     #[serde(default)]
@@ -424,6 +436,8 @@ impl Default for Settings {
             ma_window: 5,
             plot_width: 400.0,
             plot_height: 200.0,
+            grid_cols: default_grid_cols(),
+            grid_rows: default_grid_rows(),
             volume_aggregation: VolumeAggregation::Weekly,
             body_part_volume_aggregation: VolumeAggregation::Weekly,
             weight_unit: WeightUnit::Lbs,
@@ -1065,9 +1079,11 @@ impl MyApp {
         ui: &mut egui::Ui,
         filtered: &[WorkoutEntry],
         sel: &[String],
+        size: egui::Vec2,
     ) -> egui_plot::PlotResponse<()> {
         let x_axis = self.settings.x_axis;
         let mut first_resp: Option<egui_plot::PlotResponse<()>> = None;
+        ui.set_max_width(size.x);
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.vertical(|ui| {
@@ -1097,8 +1113,8 @@ impl MyApp {
                     let mut record_tip: Option<String> = None;
                     ui.heading("Weight Over Time");
                     let resp = Plot::new("weight_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1212,8 +1228,7 @@ impl MyApp {
                                             .name("Hovered"),
                                     );
                                     if self.settings.show_pr_markers {
-                                        if let Some(rec) =
-                                            all_records.iter().find(|r| r.point == p)
+                                        if let Some(rec) = all_records.iter().find(|r| r.point == p)
                                         {
                                             record_tip = Some(format!(
                                                 "{}: {:.0} {unit_label} x{}",
@@ -1277,8 +1292,8 @@ impl MyApp {
                     let mut record_tip: Option<String> = None;
                     ui.heading("Estimated 1RM Over Time");
                     let resp = Plot::new("est_1rm_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1371,8 +1386,7 @@ impl MyApp {
                                             .name("Hovered"),
                                     );
                                     if self.settings.show_pr_markers {
-                                        if let Some(rec) =
-                                            all_records.iter().find(|r| r.point == p)
+                                        if let Some(rec) = all_records.iter().find(|r| r.point == p)
                                         {
                                             record_tip = Some(format!(
                                                 "{}: {:.0} {unit_label} x{} (est {:.0})",
@@ -1439,8 +1453,8 @@ impl MyApp {
                     let mut highlight: Option<[f64; 2]> = None;
                     ui.heading("Total Volume Over Time");
                     let resp = Plot::new("volume_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1575,8 +1589,8 @@ impl MyApp {
                     };
                     ui.heading("Exercise Volume Over Time");
                     let resp = Plot::new("exercise_volume_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1623,8 +1637,8 @@ impl MyApp {
                     };
                     ui.heading("Body Part Volume Over Time");
                     let resp = Plot::new("body_part_volume_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1681,8 +1695,8 @@ impl MyApp {
                     let bp_for_axis = body_parts.clone();
                     ui.heading("Body Part Distribution");
                     let resp = Plot::new("body_part_distribution_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(move |mark, _, _| {
                             bp_for_axis
                                 .get(mark.value as usize)
@@ -1695,11 +1709,7 @@ impl MyApp {
                         .show(ui, |plot_ui| {
                             plot_ui.bar_chart(bars);
                         });
-                    if let Some(bp) = draw_pie_chart(
-                        ui,
-                        &pie,
-                        egui::vec2(self.settings.plot_width, self.settings.plot_height),
-                    ) {
+                    if let Some(bp) = draw_pie_chart(ui, &pie, egui::vec2(size.x, size.y)) {
                         self.settings.body_part_filter = Some(bp);
                     }
                     first_resp.get_or_insert(resp);
@@ -1713,8 +1723,8 @@ impl MyApp {
                     };
                     ui.heading("Sets Per Day");
                     let resp = Plot::new("sets_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(move |mark, _chars, _| format!("{:.0}", mark.value))
                         .x_axis_label("Day")
                         .y_axis_label("Sets")
@@ -1739,8 +1749,8 @@ impl MyApp {
                     ui.heading("Weight vs Reps");
                     let mut hover_text: Option<String> = None;
                     let resp = Plot::new("weight_reps_scatter_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(|mark, _chars, _| format!("{:.0}", mark.value))
                         .x_axis_label(format!("Weight ({unit_label})"))
                         .y_axis_label("Reps")
@@ -1797,8 +1807,8 @@ impl MyApp {
                     let mut highlight: Option<[f64; 2]> = None;
                     ui.heading("RPE Over Time");
                     let resp = Plot::new("rpe_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(move |mark, _chars, _| {
                             if x_axis == XAxis::Date {
                                 NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
@@ -1910,8 +1920,8 @@ impl MyApp {
                     };
                     ui.heading("Weekly Summary");
                     let resp = Plot::new("weekly_summary_plot")
-                        .width(self.settings.plot_width)
-                        .height(self.settings.plot_height)
+                        .width(size.x)
+                        .height(size.y)
                         .x_axis_formatter(move |mark, _chars, _| {
                             let idx = mark.value.round() as usize;
                             weeks_for_axis
@@ -1964,8 +1974,8 @@ impl MyApp {
         first_resp.unwrap_or_else(|| {
             ui.heading("No Data");
             Plot::new("empty_plot")
-                .width(self.settings.plot_width)
-                .height(self.settings.plot_height)
+                .width(size.x)
+                .height(size.y)
                 .x_axis_label("")
                 .y_axis_label("")
                 .show(ui, |_ui| {})
@@ -2716,7 +2726,13 @@ impl App for MyApp {
                     ui.label("No exercises selected");
                 } else {
                     let sel: Vec<String> = self.selected_exercises.clone();
-                    let plot_resp = self.draw_plot(ctx, ui, &filtered, &sel);
+                    let plot_resp = self.draw_plot(
+                        ctx,
+                        ui,
+                        &filtered,
+                        &sel,
+                        egui::vec2(self.settings.plot_width, self.settings.plot_height),
+                    );
                     if ui.button("Save Plot").clicked() {
                         self.capture_rect = Some(plot_resp.response.rect);
                         ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
@@ -2951,7 +2967,13 @@ impl App for MyApp {
                         ui.label("No exercises selected");
                     } else {
                         let sel: Vec<String> = self.selected_exercises.clone();
-                        let plot_resp = self.draw_plot(ctx, ui, &filtered, &sel);
+                        let plot_resp = self.draw_plot(
+                            ctx,
+                            ui,
+                            &filtered,
+                            &sel,
+                            egui::vec2(self.settings.plot_width, self.settings.plot_height),
+                        );
                         if ui.button("Save Plot").clicked() {
                             self.capture_rect = Some(plot_resp.response.rect);
                             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
@@ -2972,11 +2994,26 @@ impl App for MyApp {
                         ui.label("No exercises selected");
                     } else {
                         let sel = self.selected_exercises.clone();
-                        ui.columns(sel.len(), |cols| {
-                            for (col, ex) in cols.iter_mut().zip(sel.iter()) {
-                                self.draw_plot(ctx, col, &filtered, &[ex.clone()]);
-                            }
-                        });
+                        let cols = self.settings.grid_cols.max(1);
+                        let rows = self.settings.grid_rows.max(1);
+                        let total_width = ui.available_width();
+                        let cell_width = total_width / cols as f32;
+                        let total_height = ui.available_height();
+                        let mut cell_height = total_height / rows as f32;
+                        if !cell_height.is_finite() || cell_height <= 0.0 {
+                            cell_height = self.settings.plot_height;
+                        }
+                        egui::Grid::new("compare_grid")
+                            .num_columns(cols)
+                            .show(ui, |ui| {
+                                for (i, ex) in sel.iter().enumerate() {
+                                    let size = egui::vec2(cell_width, cell_height);
+                                    self.draw_plot(ctx, ui, &filtered, &[ex.clone()], size);
+                                    if (i + 1) % cols == 0 {
+                                        ui.end_row();
+                                    }
+                                }
+                            });
                     }
                 });
             self.show_compare_window = open;
@@ -3643,6 +3680,8 @@ impl App for MyApp {
                                             self.settings_dirty = true;
                                         }
                                     });
+                                    ui.end_row();
+
                                     ui.horizontal(|ui| {
                                         ui.label("Plot width:");
                                         let mut w = format!("{:.0}", self.settings.plot_width);
@@ -3659,6 +3698,28 @@ impl App for MyApp {
                                         if ui.text_edit_singleline(&mut h).changed() {
                                             if let Ok(v) = h.parse::<f32>() {
                                                 self.settings.plot_height = v.max(50.0);
+                                                self.settings_dirty = true;
+                                            }
+                                        }
+                                    });
+                                    ui.end_row();
+
+                                    ui.horizontal(|ui| {
+                                        ui.label("Grid columns:");
+                                        let mut c = self.settings.grid_cols.to_string();
+                                        if ui.text_edit_singleline(&mut c).changed() {
+                                            if let Ok(v) = c.parse::<usize>() {
+                                                self.settings.grid_cols = v.max(1);
+                                                self.settings_dirty = true;
+                                            }
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Grid rows:");
+                                        let mut r = self.settings.grid_rows.to_string();
+                                        if ui.text_edit_singleline(&mut r).changed() {
+                                            if let Ok(v) = r.parse::<usize>() {
+                                                self.settings.grid_rows = v.max(1);
                                                 self.settings_dirty = true;
                                             }
                                         }
