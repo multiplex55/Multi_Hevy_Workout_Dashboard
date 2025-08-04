@@ -546,6 +546,7 @@ struct MyApp {
     pending_filename: Option<String>,
     pending_path: Option<String>,
     show_point_details: bool,
+    show_exercise_popup: bool,
     point_entries: Vec<WorkoutEntry>,
 }
 
@@ -600,6 +601,7 @@ impl Default for MyApp {
             pending_filename: None,
             pending_path: None,
             show_point_details: false,
+            show_exercise_popup: false,
             point_entries: Vec::new(),
         };
 
@@ -2975,6 +2977,45 @@ impl App for MyApp {
             self.show_point_details = open;
         }
 
+        if self.show_exercise_popup {
+            let mut open = self.show_exercise_popup;
+            egui::Window::new("Exercises")
+                .open(&mut open)
+                .vscroll(true)
+                .show(ctx, |ui| {
+                    let mut exercises = unique_exercises(
+                        &self.workouts,
+                        self.settings.start_date,
+                        self.settings.end_date,
+                    );
+                    if let Some(ref bp) = self.settings.body_part_filter {
+                        exercises.retain(|ex| {
+                            body_parts::body_part_for(ex)
+                                .as_deref()
+                                .map_or(false, |b| b == bp)
+                        });
+                    }
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for ex in exercises {
+                            let mut sel = self.selected_exercises.contains(&ex);
+                            if ui.checkbox(&mut sel, &ex).changed() {
+                                if sel {
+                                    if !self.selected_exercises.contains(&ex) {
+                                        self.selected_exercises.push(ex.clone());
+                                    }
+                                } else {
+                                    self.selected_exercises.retain(|e| e != &ex);
+                                }
+                                self.update_selected_stats();
+                                self.settings.selected_exercises = self.selected_exercises.clone();
+                                self.settings_dirty = true;
+                            }
+                        }
+                    });
+                });
+            self.show_exercise_popup = open;
+        }
+
         if self.show_plot_window {
             let filtered = self.filtered_entries();
             let mut open = self.show_plot_window;
@@ -4371,6 +4412,9 @@ impl App for MyApp {
                                                     });
                                                     if prev != self.settings.body_part_filter {
                                                         self.settings_dirty = true;
+                                                    }
+                                                    if ui.button("Show Exercises").clicked() {
+                                                        self.show_exercise_popup = true;
                                                     }
                                                 });
                                                 ui.horizontal(|ui| {
