@@ -253,6 +253,8 @@ struct Settings {
     #[serde(default)]
     show_weekly_summary: bool,
     #[serde(default)]
+    show_weekly_summary_table_window: bool,
+    #[serde(default)]
     show_exercise_stats: bool,
     #[serde(default)]
     show_pr_window: bool,
@@ -419,6 +421,7 @@ impl Default for Settings {
             show_body_part_trend: false,
             show_exercise_volume: false,
             show_weekly_summary: false,
+            show_weekly_summary_table_window: false,
             show_exercise_stats: false,
             show_pr_window: false,
             show_exercise_panel: true,
@@ -526,6 +529,7 @@ struct MyApp {
     show_compare_window: bool,
     show_stats_window: bool,
     show_overall_analysis_window: bool,
+    show_weekly_summary_table_window: bool,
     show_distributions: bool,
     show_exercise_stats: bool,
     show_pr_window: bool,
@@ -565,6 +569,7 @@ impl Default for MyApp {
         let show_compare_window = settings.show_compare_window;
         let show_stats_window = settings.show_stats_window;
         let show_overall_analysis_window = settings.show_overall_analysis_window;
+        let show_weekly_summary_table_window = settings.show_weekly_summary_table_window;
         let show_mapping = settings.show_mapping;
         let mut app = Self {
             workouts: Vec::new(),
@@ -583,6 +588,7 @@ impl Default for MyApp {
             show_compare_window,
             show_stats_window,
             show_overall_analysis_window,
+            show_weekly_summary_table_window,
             show_distributions: false,
             show_exercise_stats,
             show_pr_window,
@@ -1933,10 +1939,71 @@ impl MyApp {
                         WeightUnit::Kg => "kg",
                         WeightUnit::Lbs => "lbs",
                     };
-                    ui.heading("Weekly Summary");
+                    ui.horizontal(|ui| {
+                        ui.heading("Weekly Summary");
+                        let btn = if self.show_weekly_summary_table_window {
+                            "Dock Table"
+                        } else {
+                            "Table Window"
+                        };
+                        if ui.button(btn).clicked() {
+                            self.show_weekly_summary_table_window =
+                                !self.show_weekly_summary_table_window;
+                            self.settings.show_weekly_summary_table_window =
+                                self.show_weekly_summary_table_window;
+                            self.settings_dirty = true;
+                        }
+                    });
+                    let f = self.settings.weight_unit.factor();
+                    let table_height = size.y.min(150.0);
+                    let render_table = |ui: &mut egui::Ui| {
+                        egui::Grid::new("weekly_summary_table")
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label("Year");
+                                ui.label("Week");
+                                ui.label("Sets");
+                                ui.label("Volume");
+                                ui.label("ACWR");
+                                ui.end_row();
+                                for w in &weeks {
+                                    ui.label(w.year.to_string());
+                                    ui.label(format!("{:02}", w.week));
+                                    ui.label(w.total_sets.to_string());
+                                    ui.label(format!("{:.1}", w.total_volume * f));
+                                    if let Some(r) = w.acwr {
+                                        if w.over_threshold {
+                                            ui.label(
+                                                RichText::new(format!("{r:.2} ⚠"))
+                                                    .color(Color32::RED),
+                                            );
+                                        } else {
+                                            ui.label(format!("{r:.2}"));
+                                        }
+                                    } else {
+                                        ui.label("-");
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                    };
+                    if !self.show_weekly_summary_table_window {
+                        egui::ScrollArea::vertical()
+                            .max_height(table_height)
+                            .show(ui, |ui| {
+                                render_table(ui);
+                            });
+                    }
+                    let plot_height = (size.y
+                        - if self.show_weekly_summary_table_window {
+                            0.0
+                        } else {
+                            table_height
+                        })
+                    .max(50.0);
                     let resp = Plot::new("weekly_summary_plot")
                         .width(size.x)
-                        .height(size.y)
+                        .height(plot_height)
                         .x_axis_formatter(move |mark, _chars, _| {
                             let idx = mark.value.round() as usize;
                             weeks_for_axis
@@ -1953,35 +2020,25 @@ impl MyApp {
                         });
 
                     first_resp.get_or_insert(resp);
-                    let f = self.settings.weight_unit.factor();
-                    egui::Grid::new("weekly_summary_table")
-                        .striped(true)
-                        .show(ui, |ui| {
-                            ui.label("Year");
-                            ui.label("Week");
-                            ui.label("Sets");
-                            ui.label("Volume");
-                            ui.label("ACWR");
-                            ui.end_row();
-                            for w in &weeks {
-                                ui.label(w.year.to_string());
-                                ui.label(format!("{:02}", w.week));
-                                ui.label(w.total_sets.to_string());
-                                ui.label(format!("{:.1}", w.total_volume * f));
-                                if let Some(r) = w.acwr {
-                                    if w.over_threshold {
-                                        ui.label(
-                                            RichText::new(format!("{r:.2} ⚠")).color(Color32::RED),
-                                        );
-                                    } else {
-                                        ui.label(format!("{r:.2}"));
-                                    }
-                                } else {
-                                    ui.label("-");
-                                }
-                                ui.end_row();
-                            }
-                        });
+                    if self.show_weekly_summary_table_window {
+                        let ctx = ui.ctx();
+                        let mut open = self.show_weekly_summary_table_window;
+                        egui::Window::new("Weekly Summary Table")
+                            .open(&mut open)
+                            .resizable(true)
+                            .vscroll(true)
+                            .show(ctx, |ui| {
+                                render_table(ui);
+                            });
+                        self.show_weekly_summary_table_window = open;
+                        if self.settings.show_weekly_summary_table_window
+                            != self.show_weekly_summary_table_window
+                        {
+                            self.settings.show_weekly_summary_table_window =
+                                self.show_weekly_summary_table_window;
+                            self.settings_dirty = true;
+                        }
+                    }
                 }
             });
         });
@@ -5371,5 +5428,11 @@ Week 1,\"01 Jan 2024, 10:10\",,desc,Bench Press,,,2,working,135,5,,,\n";
     fn test_parse_latest_pr_number() {
         let json = "[{\"number\": 42}]";
         assert_eq!(parse_latest_pr_number(json), Some(42));
+    }
+
+    #[test]
+    fn default_weekly_summary_table_window_off() {
+        let settings = Settings::default();
+        assert!(!settings.show_weekly_summary_table_window);
     }
 }
