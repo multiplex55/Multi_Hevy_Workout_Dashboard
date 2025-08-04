@@ -3761,229 +3761,254 @@ impl App for MyApp {
                         egui::CollapsingHeader::new("Plots")
                             .default_open(true)
                             .show(ui, |ui| {
-                                egui::Grid::new("plots_grid").num_columns(2).show(ui, |ui| {
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_weight,
-                                            "Show Weight over time",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_est_1rm,
-                                            "Show Estimated 1RM",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
+                                egui::CollapsingHeader::new("Primary Plots")
+                                    .default_open(true)
+                                    .show(ui, |ui| {
+                                        egui::Grid::new("plots_grid_primary")
+                                            .num_columns(2)
+                                            .show(ui, |ui| {
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_weight,
+                                                        "Show Weight over time",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_est_1rm,
+                                                        "Show Estimated 1RM",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
 
-                                    if ui
-                                        .checkbox(&mut self.settings.show_sets, "Show Sets per day")
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_rep_histogram,
-                                            "Show Rep Histogram",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_sets,
+                                                        "Show Sets per day",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_rep_histogram,
+                                                        "Show Rep Histogram",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
 
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_weight_reps_scatter,
-                                            "Show Weight/Reps Scatter",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_volume,
-                                            "Show Training Volume",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_weight_reps_scatter,
+                                                        "Show Weight/Reps Scatter",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_volume,
+                                                        "Show Training Volume",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
 
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_crosshair,
-                                            "Show Crosshair Tooltip",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.label("");
-                                    ui.end_row();
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_body_part_volume,
+                                                        "Show Volume by Body Part",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings
+                                                            .show_body_part_distribution,
+                                                        "Show Body Part Distribution",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
 
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_body_part_volume,
-                                            "Show Volume by Body Part",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_body_part_distribution,
-                                            "Show Body Part Distribution",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_body_part_trend,
+                                                        "Show Body Part Trend",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_exercise_volume,
+                                                        "Show Exercise Volume",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
 
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_body_part_trend,
-                                            "Show Body Part Trend",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
-
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_exercise_volume,
-                                            "Show Exercise Volume",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_weekly_summary,
-                                            "Show Weekly Summary",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
-
-                                    if ui
-                                        .checkbox(&mut self.settings.show_rpe, "Show RPE")
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_rpe_trend,
-                                            "Show RPE Trend",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
-
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.highlight_max,
-                                            "Highlight maximums",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_pr_markers,
-                                            "Show PR markers",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
-
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_weight_trend,
-                                            "Show Weight Trend",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_weight_forecast,
-                                            "Show Weight Forecast",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
-
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_smoothed,
-                                            "Show moving average",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
-
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_volume_trend,
-                                            "Show Volume Trend",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    if ui
-                                        .checkbox(
-                                            &mut self.settings.show_volume_forecast,
-                                            "Show Volume Forecast",
-                                        )
-                                        .changed()
-                                    {
-                                        self.settings_dirty = true;
-                                    }
-                                    ui.end_row();
-
-                                    ui.horizontal(|ui| {
-                                        ui.label("MA Window:");
-                                        let mut w = self.settings.ma_window.to_string();
-                                        if ui.text_edit_singleline(&mut w).changed() {
-                                            if let Ok(v) = w.parse::<usize>() {
-                                                self.settings.ma_window = v.max(1);
-                                                self.settings_dirty = true;
-                                            }
-                                        }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_weekly_summary,
+                                                        "Show Weekly Summary",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_rpe,
+                                                        "Show RPE",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
+                                            });
                                     });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Smoothing:");
-                                        let prev = self.settings.smoothing_method;
-                                        egui::ComboBox::from_id_source("smoothing_method_combo")
+
+                                egui::CollapsingHeader::new("Overlay/Extras")
+                                    .default_open(true)
+                                    .show(ui, |ui| {
+                                        egui::Grid::new("plots_grid_overlay")
+                                            .num_columns(2)
+                                            .show(ui, |ui| {
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_crosshair,
+                                                        "Show Crosshair Tooltip",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.highlight_max,
+                                                        "Highlight maximums",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
+
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_pr_markers,
+                                                        "Show PR markers",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_weight_trend,
+                                                        "Show Weight Trend",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
+
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_weight_forecast,
+                                                        "Show Weight Forecast",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_smoothed,
+                                                        "Show moving average",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
+
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_volume_trend,
+                                                        "Show Volume Trend",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_volume_forecast,
+                                                        "Show Volume Forecast",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.end_row();
+
+                                                if ui
+                                                    .checkbox(
+                                                        &mut self.settings.show_rpe_trend,
+                                                        "Show RPE Trend",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.settings_dirty = true;
+                                                }
+                                                ui.label("");
+                                                ui.end_row();
+                                            });
+                                    });
+
+                                egui::Grid::new("plot_settings_grid")
+                                    .num_columns(2)
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label("MA Window:");
+                                            let mut w = self.settings.ma_window.to_string();
+                                            if ui.text_edit_singleline(&mut w).changed() {
+                                                if let Ok(v) = w.parse::<usize>() {
+                                                    self.settings.ma_window = v.max(1);
+                                                    self.settings_dirty = true;
+                                                }
+                                            }
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Smoothing:");
+                                            let prev = self.settings.smoothing_method;
+                                            egui::ComboBox::from_id_source(
+                                                "smoothing_method_combo",
+                                            )
                                             .selected_text(match self.settings.smoothing_method {
                                                 SmoothingMethod::SimpleMA => "Simple MA",
                                                 SmoothingMethod::EMA => "EMA",
@@ -4000,56 +4025,58 @@ impl App for MyApp {
                                                     "EMA",
                                                 );
                                             });
-                                        if prev != self.settings.smoothing_method {
-                                            self.settings_dirty = true;
-                                        }
-                                    });
-                                    ui.end_row();
+                                            if prev != self.settings.smoothing_method {
+                                                self.settings_dirty = true;
+                                            }
+                                        });
+                                        ui.end_row();
 
-                                    ui.horizontal(|ui| {
-                                        ui.label("Plot width:");
-                                        let mut w = format!("{:.0}", self.settings.plot_width);
-                                        if ui.text_edit_singleline(&mut w).changed() {
-                                            if let Ok(v) = w.parse::<f32>() {
-                                                self.settings.plot_width = v.max(50.0);
-                                                self.settings_dirty = true;
+                                        ui.horizontal(|ui| {
+                                            ui.label("Plot width:");
+                                            let mut w =
+                                                format!("{:.0}", self.settings.plot_width);
+                                            if ui.text_edit_singleline(&mut w).changed() {
+                                                if let Ok(v) = w.parse::<f32>() {
+                                                    self.settings.plot_width = v.max(50.0);
+                                                    self.settings_dirty = true;
+                                                }
                                             }
-                                        }
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Plot height:");
-                                        let mut h = format!("{:.0}", self.settings.plot_height);
-                                        if ui.text_edit_singleline(&mut h).changed() {
-                                            if let Ok(v) = h.parse::<f32>() {
-                                                self.settings.plot_height = v.max(50.0);
-                                                self.settings_dirty = true;
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Plot height:");
+                                            let mut h =
+                                                format!("{:.0}", self.settings.plot_height);
+                                            if ui.text_edit_singleline(&mut h).changed() {
+                                                if let Ok(v) = h.parse::<f32>() {
+                                                    self.settings.plot_height = v.max(50.0);
+                                                    self.settings_dirty = true;
+                                                }
                                             }
-                                        }
-                                    });
-                                    ui.end_row();
+                                        });
+                                        ui.end_row();
 
-                                    ui.horizontal(|ui| {
-                                        ui.label("Grid columns:");
-                                        let mut c = self.settings.grid_cols.to_string();
-                                        if ui.text_edit_singleline(&mut c).changed() {
-                                            if let Ok(v) = c.parse::<usize>() {
-                                                self.settings.grid_cols = v.max(1);
-                                                self.settings_dirty = true;
+                                        ui.horizontal(|ui| {
+                                            ui.label("Grid columns:");
+                                            let mut c = self.settings.grid_cols.to_string();
+                                            if ui.text_edit_singleline(&mut c).changed() {
+                                                if let Ok(v) = c.parse::<usize>() {
+                                                    self.settings.grid_cols = v.max(1);
+                                                    self.settings_dirty = true;
+                                                }
                                             }
-                                        }
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label("Grid rows:");
-                                        let mut r = self.settings.grid_rows.to_string();
-                                        if ui.text_edit_singleline(&mut r).changed() {
-                                            if let Ok(v) = r.parse::<usize>() {
-                                                self.settings.grid_rows = v.max(1);
-                                                self.settings_dirty = true;
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label("Grid rows:");
+                                            let mut r = self.settings.grid_rows.to_string();
+                                            if ui.text_edit_singleline(&mut r).changed() {
+                                                if let Ok(v) = r.parse::<usize>() {
+                                                    self.settings.grid_rows = v.max(1);
+                                                    self.settings_dirty = true;
+                                                }
                                             }
-                                        }
+                                        });
+                                        ui.end_row();
                                     });
-                                    ui.end_row();
-                                });
                             });
 
                         egui::CollapsingHeader::new("Distributions")
