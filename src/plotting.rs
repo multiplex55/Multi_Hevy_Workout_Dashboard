@@ -1,6 +1,6 @@
 use chrono::{Datelike, NaiveDate};
 use egui::epaint::Hsva;
-use egui::{Color32, Pos2, Sense, Shape, Stroke, Ui, Vec2};
+use egui::{Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, Ui, Vec2};
 use egui_plot::{Bar, BarChart, HLine, Line, PlotPoints, PlotUi, Points, VLine};
 
 use crate::body_parts::body_part_for;
@@ -512,6 +512,7 @@ pub fn draw_pie_chart(ui: &mut Ui, chart: &PieChart, size: Vec2) -> Option<Strin
     let center = rect.center();
     let radius = rect.width().min(rect.height()) / 2.0;
     let painter = ui.painter();
+    let total: f64 = chart.slices.iter().map(|s| s.value).sum();
 
     for slice in &chart.slices {
         let steps = ((slice.sweep.abs() / std::f64::consts::TAU) * 64.0).ceil() as usize;
@@ -525,6 +526,33 @@ pub fn draw_pie_chart(ui: &mut Ui, chart: &PieChart, size: Vec2) -> Option<Strin
             points.push(Pos2 { x, y });
         }
         painter.add(Shape::convex_polygon(points, slice.color, Stroke::NONE));
+
+        let mid = slice.start + slice.sweep / 2.0;
+        let is_small = slice.sweep.abs() < std::f64::consts::TAU * 0.05;
+        let text_radius = if is_small { radius * 0.8 } else { radius * 0.5 };
+        let pos = Pos2 {
+            x: center.x + text_radius * mid.cos() as f32,
+            y: center.y + text_radius * mid.sin() as f32,
+        };
+        let hsv = Hsva::from(slice.color);
+        let text_color = if hsv.v > 0.5 {
+            Color32::BLACK
+        } else {
+            Color32::WHITE
+        };
+        let pct = if total > 0.0 {
+            format!(" ({:.1}%)", slice.value / total * 100.0)
+        } else {
+            String::new()
+        };
+        let text = format!("{}{}", slice.label, pct);
+        painter.text(
+            pos,
+            Align2::CENTER_CENTER,
+            text,
+            FontId::proportional(14.0),
+            text_color,
+        );
     }
 
     if response.clicked() {
