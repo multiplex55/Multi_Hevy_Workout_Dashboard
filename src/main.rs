@@ -3619,10 +3619,11 @@ impl App for MyApp {
                         .show(ui, |ui| {
                             egui_extras::TableBuilder::new(ui)
                                 .striped(true)
-                                .column(egui_extras::Column::auto())
-                                .column(egui_extras::Column::remainder())
-                                .column(egui_extras::Column::remainder())
-                                .column(egui_extras::Column::remainder())
+                                .resizable(true)
+                                .column(egui_extras::Column::auto().resizable(true))
+                                .column(egui_extras::Column::initial(150.0).resizable(true))
+                                .column(egui_extras::Column::initial(100.0).resizable(true))
+                                .column(egui_extras::Column::initial(150.0).resizable(true))
                                 .header(row_height, |mut header| {
                                     header.col(|ui| {
                                         ui.label("");
