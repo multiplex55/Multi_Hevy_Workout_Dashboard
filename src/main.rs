@@ -1772,6 +1772,11 @@ impl MyApp {
                     let resp = Plot::new("weight_reps_scatter_plot")
                         .width(size.x)
                         .height(size.y)
+                        .include_x(0.0)
+                        .include_x(plotting::MAX_WEIGHT)
+                        .include_y(0.0)
+                        .include_y(plotting::MAX_REPS)
+                        .auto_bounds(egui::Vec2b::new(false, false))
                         .x_axis_formatter(|mark, _chars, _| format!("{:.0}", mark.value))
                         .x_axis_label(format!("Weight ({unit_label})"))
                         .y_axis_label("Reps")
@@ -3764,9 +3769,9 @@ impl App for MyApp {
                                 egui::CollapsingHeader::new("Primary Plots")
                                     .default_open(true)
                                     .show(ui, |ui| {
-                                        egui::Grid::new("plots_grid_primary")
-                                            .num_columns(2)
-                                            .show(ui, |ui| {
+                                        egui::Grid::new("plots_grid_primary").num_columns(2).show(
+                                            ui,
+                                            |ui| {
                                                 if ui
                                                     .checkbox(
                                                         &mut self.settings.show_weight,
@@ -3838,7 +3843,8 @@ impl App for MyApp {
                                                 }
                                                 if ui
                                                     .checkbox(
-                                                        &mut self.settings
+                                                        &mut self
+                                                            .settings
                                                             .show_body_part_distribution,
                                                         "Show Body Part Distribution",
                                                     )
@@ -3887,15 +3893,16 @@ impl App for MyApp {
                                                     self.settings_dirty = true;
                                                 }
                                                 ui.end_row();
-                                            });
+                                            },
+                                        );
                                     });
 
                                 egui::CollapsingHeader::new("Overlay/Extras")
                                     .default_open(true)
                                     .show(ui, |ui| {
-                                        egui::Grid::new("plots_grid_overlay")
-                                            .num_columns(2)
-                                            .show(ui, |ui| {
+                                        egui::Grid::new("plots_grid_overlay").num_columns(2).show(
+                                            ui,
+                                            |ui| {
                                                 if ui
                                                     .checkbox(
                                                         &mut self.settings.show_crosshair,
@@ -3987,12 +3994,13 @@ impl App for MyApp {
                                                 }
                                                 ui.label("");
                                                 ui.end_row();
-                                            });
+                                            },
+                                        );
                                     });
 
-                                egui::Grid::new("plot_settings_grid")
-                                    .num_columns(2)
-                                    .show(ui, |ui| {
+                                egui::Grid::new("plot_settings_grid").num_columns(2).show(
+                                    ui,
+                                    |ui| {
                                         ui.horizontal(|ui| {
                                             ui.label("MA Window:");
                                             let mut w = self.settings.ma_window.to_string();
@@ -4013,18 +4021,21 @@ impl App for MyApp {
                                                 SmoothingMethod::SimpleMA => "Simple MA",
                                                 SmoothingMethod::EMA => "EMA",
                                             })
-                                            .show_ui(ui, |ui| {
-                                                ui.selectable_value(
-                                                    &mut self.settings.smoothing_method,
-                                                    SmoothingMethod::SimpleMA,
-                                                    "Simple MA",
-                                                );
-                                                ui.selectable_value(
-                                                    &mut self.settings.smoothing_method,
-                                                    SmoothingMethod::EMA,
-                                                    "EMA",
-                                                );
-                                            });
+                                            .show_ui(
+                                                ui,
+                                                |ui| {
+                                                    ui.selectable_value(
+                                                        &mut self.settings.smoothing_method,
+                                                        SmoothingMethod::SimpleMA,
+                                                        "Simple MA",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut self.settings.smoothing_method,
+                                                        SmoothingMethod::EMA,
+                                                        "EMA",
+                                                    );
+                                                },
+                                            );
                                             if prev != self.settings.smoothing_method {
                                                 self.settings_dirty = true;
                                             }
@@ -4033,8 +4044,7 @@ impl App for MyApp {
 
                                         ui.horizontal(|ui| {
                                             ui.label("Plot width:");
-                                            let mut w =
-                                                format!("{:.0}", self.settings.plot_width);
+                                            let mut w = format!("{:.0}", self.settings.plot_width);
                                             if ui.text_edit_singleline(&mut w).changed() {
                                                 if let Ok(v) = w.parse::<f32>() {
                                                     self.settings.plot_width = v.max(50.0);
@@ -4044,8 +4054,7 @@ impl App for MyApp {
                                         });
                                         ui.horizontal(|ui| {
                                             ui.label("Plot height:");
-                                            let mut h =
-                                                format!("{:.0}", self.settings.plot_height);
+                                            let mut h = format!("{:.0}", self.settings.plot_height);
                                             if ui.text_edit_singleline(&mut h).changed() {
                                                 if let Ok(v) = h.parse::<f32>() {
                                                     self.settings.plot_height = v.max(50.0);
@@ -4076,7 +4085,8 @@ impl App for MyApp {
                                             }
                                         });
                                         ui.end_row();
-                                    });
+                                    },
+                                );
                             });
 
                         egui::CollapsingHeader::new("Distributions")

@@ -582,8 +582,8 @@ pub fn draw_pie_chart(ui: &mut Ui, chart: &PieChart, size: Vec2) -> Option<Strin
 /// All matching entries within the optional date range are included. Weights
 /// are converted using `unit` and plotted on the x-axis with reps on the
 /// y-axis.
-const MAX_WEIGHT: f64 = 10_000.0;
-const MAX_REPS: f64 = 1_000.0;
+pub const MAX_WEIGHT: f64 = 10_000.0;
+pub const MAX_REPS: f64 = 1_000.0;
 
 pub fn weight_reps_scatter(
     entries: &[WorkoutEntry],
@@ -611,7 +611,14 @@ pub fn weight_reps_scatter(
             }
         }
     }
-    Points::new(pts).name("Weight vs Reps")
+    pts.retain(|p| p[0].is_finite() && p[1].is_finite());
+    if pts.is_empty() {
+        Points::new(vec![[0.0, 0.0]])
+            .color(Color32::TRANSPARENT)
+            .name("Weight vs Reps")
+    } else {
+        Points::new(pts).name("Weight vs Reps")
+    }
 }
 
 /// Draw a crosshair at the provided plot coordinates.
@@ -1317,6 +1324,26 @@ mod tests {
         let bounds = PlotItem::bounds(&pts);
         assert_eq!(bounds.min(), [100.0, 10.0]);
         assert_eq!(bounds.max(), [super::MAX_WEIGHT, super::MAX_REPS]);
+    }
+
+    #[test]
+    fn scatter_filters_non_finite_values() {
+        fn entry(weight: f32, reps: u32) -> WorkoutEntry {
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: Some(weight),
+                reps: Some(reps),
+                raw: RawWorkoutRow::default(),
+            }
+        }
+
+        let entries = vec![entry(f32::NAN, 10), entry(100.0, 10)];
+
+        let pts = weight_reps_scatter(&entries, &[], None, None, WeightUnit::Lbs);
+        let bounds = PlotItem::bounds(&pts);
+        assert_eq!(bounds.min(), [100.0, 10.0]);
+        assert_eq!(bounds.max(), [100.0, 10.0]);
     }
 
     #[test]
