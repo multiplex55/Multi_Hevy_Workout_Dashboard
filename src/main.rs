@@ -1094,6 +1094,7 @@ impl MyApp {
                     let mut point_exercises: Vec<String> = Vec::new();
                     let mut pointer = None;
                     let mut highlight: Option<[f64; 2]> = None;
+                    let mut record_tip: Option<String> = None;
                     ui.heading("Weight Over Time");
                     let resp = Plot::new("weight_plot")
                         .width(self.settings.plot_width)
@@ -1118,6 +1119,7 @@ impl MyApp {
                                 None
                             };
                             let mut ex_idx = 0usize;
+                            let mut all_records: Vec<plotting::Record> = Vec::new();
                             for lw in weight_over_time_line(
                                 filtered,
                                 sel,
@@ -1169,7 +1171,7 @@ impl MyApp {
                                 } else {
                                     plot_ui.line(lw.line);
                                 }
-                                if lw.max_point.is_some() && self.settings.highlight_max {
+                                if self.settings.highlight_max {
                                     if let (Some(p), Some(label)) =
                                         (lw.max_point, lw.label.as_deref())
                                     {
@@ -1185,14 +1187,18 @@ impl MyApp {
                                                 .name(label),
                                         );
                                     }
-                                    if self.settings.show_pr_markers && !lw.record_points.is_empty()
-                                    {
-                                        plot_ui.points(
-                                            Points::new(lw.record_points.clone())
-                                                .shape(MarkerShape::Asterisk)
-                                                .color(egui::Color32::LIGHT_GREEN)
-                                                .name("Record"),
-                                        );
+                                }
+                                if self.settings.show_pr_markers && !lw.records.is_empty() {
+                                    let rec_pts: Vec<[f64; 2]> =
+                                        lw.records.iter().map(|r| r.point).collect();
+                                    plot_ui.points(
+                                        Points::new(rec_pts)
+                                            .shape(MarkerShape::Asterisk)
+                                            .color(egui::Color32::LIGHT_GREEN)
+                                            .name("Record"),
+                                    );
+                                    for r in &lw.records {
+                                        all_records.push(r.clone());
                                     }
                                 }
                             }
@@ -1205,6 +1211,18 @@ impl MyApp {
                                             .highlight(true)
                                             .name("Hovered"),
                                     );
+                                    if self.settings.show_pr_markers {
+                                        if let Some(rec) =
+                                            all_records.iter().find(|r| r.point == p)
+                                        {
+                                            record_tip = Some(format!(
+                                                "{}: {:.0} {unit_label} x{}",
+                                                rec.date.format("%Y-%m-%d"),
+                                                rec.weight,
+                                                rec.reps
+                                            ));
+                                        }
+                                    }
                                 }
                             }
                         });
@@ -1232,6 +1250,9 @@ impl MyApp {
                                         XAxis::WorkoutIndex => format!("{}", p[0] as i64),
                                     };
                                     ui.label(format!("{x_text}: {:.2}", p[1]));
+                                    if let Some(rt) = record_tip.clone() {
+                                        ui.label(rt);
+                                    }
                                 },
                             );
                         }
@@ -1253,6 +1274,7 @@ impl MyApp {
                     let mut point_exercises: Vec<String> = Vec::new();
                     let mut pointer = None;
                     let mut highlight: Option<[f64; 2]> = None;
+                    let mut record_tip: Option<String> = None;
                     ui.heading("Estimated 1RM Over Time");
                     let resp = Plot::new("est_1rm_plot")
                         .width(self.settings.plot_width)
@@ -1277,6 +1299,7 @@ impl MyApp {
                                 None
                             };
                             let mut ex_idx = 0usize;
+                            let mut all_records: Vec<plotting::Record> = Vec::new();
                             for lr in estimated_1rm_line(
                                 filtered,
                                 sel,
@@ -1319,15 +1342,18 @@ impl MyApp {
                                                     .name(label),
                                             );
                                         }
-                                        if self.settings.show_pr_markers
-                                            && !lr.record_points.is_empty()
-                                        {
-                                            plot_ui.points(
-                                                Points::new(lr.record_points.clone())
-                                                    .shape(MarkerShape::Asterisk)
-                                                    .color(egui::Color32::LIGHT_GREEN)
-                                                    .name("Record"),
-                                            );
+                                    }
+                                    if self.settings.show_pr_markers && !lr.records.is_empty() {
+                                        let rec_pts: Vec<[f64; 2]> =
+                                            lr.records.iter().map(|r| r.point).collect();
+                                        plot_ui.points(
+                                            Points::new(rec_pts)
+                                                .shape(MarkerShape::Asterisk)
+                                                .color(egui::Color32::LIGHT_GREEN)
+                                                .name("Record"),
+                                        );
+                                        for r in &lr.records {
+                                            all_records.push(r.clone());
                                         }
                                     }
                                     ex_idx += 1;
@@ -1344,6 +1370,19 @@ impl MyApp {
                                             .highlight(true)
                                             .name("Hovered"),
                                     );
+                                    if self.settings.show_pr_markers {
+                                        if let Some(rec) =
+                                            all_records.iter().find(|r| r.point == p)
+                                        {
+                                            record_tip = Some(format!(
+                                                "{}: {:.0} {unit_label} x{} (est {:.0})",
+                                                rec.date.format("%Y-%m-%d"),
+                                                rec.weight,
+                                                rec.reps,
+                                                rec.point[1]
+                                            ));
+                                        }
+                                    }
                                 }
                             }
                         });
@@ -1371,6 +1410,9 @@ impl MyApp {
                                         XAxis::WorkoutIndex => format!("{}", p[0] as i64),
                                     };
                                     ui.label(format!("{x_text}: {:.2}", p[1]));
+                                    if let Some(rt) = record_tip.clone() {
+                                        ui.label(rt);
+                                    }
                                 },
                             );
                         }

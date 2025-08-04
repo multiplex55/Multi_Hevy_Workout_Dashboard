@@ -148,12 +148,21 @@ pub struct PieChart {
 }
 
 /// Result of generating a plot line with an optional marker for the maximum value.
+#[derive(Clone)]
+pub struct Record {
+    pub point: [f64; 2],
+    pub date: NaiveDate,
+    pub weight: f64,
+    pub reps: u32,
+}
+
+/// Result of generating a plot line with an optional marker for the maximum value.
 pub struct LineWithMarker {
     pub line: Line,
     pub points: Vec<[f64; 2]>,
     pub max_point: Option<[f64; 2]>,
     pub label: Option<String>,
-    pub record_points: Vec<[f64; 2]>,
+    pub records: Vec<Record>,
 }
 
 /// Generate a line plot of weight over time for one or more exercises.
@@ -175,7 +184,7 @@ pub fn weight_over_time_line(
     let mut lines = Vec::new();
     for exercise in exercises {
         let mut points = Vec::new();
-        let mut record_points = Vec::new();
+        let mut records = Vec::new();
         let mut idx = 0usize;
         let mut max_val = f64::NEG_INFINITY;
         let mut max_point = None;
@@ -206,7 +215,12 @@ pub fn weight_over_time_line(
                     if cmp > max_val {
                         max_val = cmp;
                         max_point = Some([x, y]);
-                        record_points.push([x, y]);
+                        records.push(Record {
+                            point: [x, y],
+                            date: d,
+                            weight: e.weight.unwrap() as f64 * f,
+                            reps: e.reps.unwrap() as u32,
+                        });
                     }
                     points.push([x, y]);
                     idx += 1;
@@ -221,7 +235,7 @@ pub fn weight_over_time_line(
                 YAxis::Weight => "Max Weight".to_string(),
                 YAxis::Volume => "Max Volume".to_string(),
             }),
-            record_points,
+            records,
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
@@ -238,7 +252,7 @@ pub fn weight_over_time_line(
                     points: smooth_points,
                     max_point: None,
                     label: None,
-                    record_points: Vec::new(),
+                    records: Vec::new(),
                 });
             }
         }
@@ -266,7 +280,7 @@ pub fn estimated_1rm_line(
     let mut lines = Vec::new();
     for exercise in exercises {
         let mut points = Vec::new();
-        let mut record_points = Vec::new();
+        let mut records = Vec::new();
         let mut idx = 0usize;
         let mut max_est = f64::NEG_INFINITY;
         let mut max_point = None;
@@ -294,7 +308,12 @@ pub fn estimated_1rm_line(
                     if est > max_est {
                         max_est = est;
                         max_point = Some([x, est]);
-                        record_points.push([x, est]);
+                        records.push(Record {
+                            point: [x, est],
+                            date: d,
+                            weight,
+                            reps: e.reps.unwrap() as u32,
+                        });
                     }
                     points.push([x, est]);
                     idx += 1;
@@ -306,7 +325,7 @@ pub fn estimated_1rm_line(
             points: points.clone(),
             max_point,
             label: Some("Max 1RM".to_string()),
-            record_points,
+            records,
         });
         if let Some(w) = ma_window.filter(|w| *w > 1) {
             if points.len() > 1 {
@@ -323,7 +342,7 @@ pub fn estimated_1rm_line(
                     points: smooth_points,
                     max_point: None,
                     label: None,
-                    record_points: Vec::new(),
+                    records: Vec::new(),
                 });
             }
         }
@@ -959,7 +978,7 @@ pub fn average_rpe_line(
             points,
             max_point,
             label,
-            record_points: Vec::new(),
+            records: Vec::new(),
         });
     }
     out
@@ -1456,7 +1475,10 @@ mod tests {
         assert_eq!(line_points(lw.line), expected);
         assert_eq!(lw.max_point, Some([1.0, 800.0]));
         assert_eq!(lw.label.as_deref(), Some("Max Volume"));
-        assert_eq!(lw.record_points, vec![[0.0, 500.0], [1.0, 800.0]]);
+        assert_eq!(
+            lw.records.iter().map(|r| r.point).collect::<Vec<_>>(),
+            vec![[0.0, 500.0], [1.0, 800.0]]
+        );
     }
 
     #[test]
@@ -1496,7 +1518,10 @@ mod tests {
             SmoothingMethod::SimpleMA,
         );
         let lw = res.into_iter().next().unwrap();
-        assert_eq!(lw.record_points, vec![[0.0, 100.0], [2.0, 110.0]]);
+        assert_eq!(
+            lw.records.iter().map(|r| r.point).collect::<Vec<_>>(),
+            vec![[0.0, 100.0], [2.0, 110.0]]
+        );
     }
 
     #[test]
@@ -1536,9 +1561,45 @@ mod tests {
             SmoothingMethod::SimpleMA,
         );
         let lw = res.into_iter().next().unwrap();
-        assert_eq!(lw.record_points.len(), 2);
-        assert_eq!(lw.record_points[0][0], 0.0);
-        assert_eq!(lw.record_points[1][0], 1.0);
+        assert_eq!(lw.records.len(), 2);
+        assert_eq!(lw.records[0].point[0], 0.0);
+        assert_eq!(lw.records[1].point[0], 1.0);
+    }
+
+    #[test]
+    fn test_record_metadata() {
+        let entries = vec![
+            WorkoutEntry {
+                date: "2024-01-01".into(),
+                exercise: "Bench".into(),
+                weight: Some(100.0),
+                reps: Some(5),
+                raw: RawWorkoutRow::default(),
+            },
+            WorkoutEntry {
+                date: "2024-01-03".into(),
+                exercise: "Bench".into(),
+                weight: Some(110.0),
+                reps: Some(5),
+                raw: RawWorkoutRow::default(),
+            },
+        ];
+        let res = weight_over_time_line(
+            &entries,
+            &["Bench".to_string()],
+            None,
+            None,
+            XAxis::WorkoutIndex,
+            YAxis::Weight,
+            WeightUnit::Lbs,
+            None,
+            SmoothingMethod::SimpleMA,
+        );
+        let lw = res.into_iter().next().unwrap();
+        assert_eq!(lw.records.len(), 2);
+        assert_eq!(lw.records[0].date, NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert_eq!(lw.records[0].weight, 100.0);
+        assert_eq!(lw.records[0].reps, 5);
     }
 
     #[test]
