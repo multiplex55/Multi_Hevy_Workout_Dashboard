@@ -66,3 +66,7 @@ the workout date, exercise name, weight and reps.
   the date range from the settings as well as an exercise filter.
 
 Use the drop‑down at the top of the window to change the exercise displayed in the plots. Open the **Settings** window from the **File** menu to choose whether each plot is shown and select the formula (Epley or Brzycki) used for estimating 1RM.
+
+## Exercise Mapping
+
+The dashboard keeps a JSON mapping of exercises to muscle groups. You can export the current mapping from the mapping management window. To combine mappings from different sources, click **Import Mapping** and select multiple JSON files. They will be merged in the order selected, with later files overriding earlier entries. After merging you can use **Export Mapping** to save the combined map to a single JSON file for reuse elsewhere.

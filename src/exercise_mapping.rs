@@ -94,3 +94,20 @@ pub fn import_all<P: AsRef<Path>>(path: P) -> io::Result<()> {
     *MAPPINGS.lock().unwrap() = map;
     Ok(())
 }
+
+pub fn merge_files<P: AsRef<Path>>(paths: &[P]) -> io::Result<()> {
+    let mut map: HashMap<String, MuscleMapping> = HashMap::new();
+    for p in paths {
+        let data = std::fs::read_to_string(p.as_ref())?;
+        let part: HashMap<String, MuscleMapping> =
+            serde_json::from_str(&data).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        for (k, v) in part {
+            map.insert(k, v);
+        }
+    }
+    for ex in body_parts::EXERCISES.keys() {
+        map.entry((*ex).to_string()).or_default();
+    }
+    *MAPPINGS.lock().unwrap() = map;
+    Ok(())
+}
