@@ -269,6 +269,8 @@ struct Settings {
     #[serde(default)]
     show_stats_window: bool,
     #[serde(default)]
+    show_overall_analysis_window: bool,
+    #[serde(default)]
     show_mapping: bool,
     highlight_max: bool,
     #[serde(default)]
@@ -425,6 +427,7 @@ impl Default for Settings {
             stats_panel_width: default_panel_width(),
             show_compare_window: false,
             show_stats_window: false,
+            show_overall_analysis_window: false,
             show_mapping: false,
             highlight_max: true,
             show_pr_markers: true,
@@ -522,6 +525,7 @@ struct MyApp {
     show_plot_window: bool,
     show_compare_window: bool,
     show_stats_window: bool,
+    show_overall_analysis_window: bool,
     show_distributions: bool,
     show_exercise_stats: bool,
     show_pr_window: bool,
@@ -560,6 +564,7 @@ impl Default for MyApp {
         let show_stats_panel = settings.show_stats_panel;
         let show_compare_window = settings.show_compare_window;
         let show_stats_window = settings.show_stats_window;
+        let show_overall_analysis_window = settings.show_overall_analysis_window;
         let show_mapping = settings.show_mapping;
         let mut app = Self {
             workouts: Vec::new(),
@@ -577,6 +582,7 @@ impl Default for MyApp {
             show_plot_window: false,
             show_compare_window,
             show_stats_window,
+            show_overall_analysis_window,
             show_distributions: false,
             show_exercise_stats,
             show_pr_window,
@@ -1991,6 +1997,81 @@ impl MyApp {
         })
     }
 
+    fn draw_overall_analysis(
+        &mut self,
+        ui: &mut egui::Ui,
+        entries: &[WorkoutEntry],
+        size: egui::Vec2,
+    ) {
+        let x_axis = self.settings.x_axis;
+        let x_label = match self.settings.x_axis {
+            XAxis::Date => "Date",
+            XAxis::WorkoutIndex => "Workout",
+        };
+        let unit_label = match self.settings.weight_unit {
+            WeightUnit::Kg => "kg",
+            WeightUnit::Lbs => "lbs",
+        };
+        ui.heading("Total Volume Over Time");
+        Plot::new("overall_volume_plot")
+            .width(size.x)
+            .height(size.y)
+            .x_axis_formatter(move |mark, _chars, _| {
+                if x_axis == XAxis::Date {
+                    NaiveDate::from_num_days_from_ce_opt(mark.value.round() as i32)
+                        .map(|d| d.format("%Y-%m-%d").to_string())
+                        .unwrap_or_else(|| format!("{:.0}", mark.value))
+                } else {
+                    format!("{:.0}", mark.value)
+                }
+            })
+            .x_axis_label(x_label)
+            .y_axis_label(format!("Volume ({unit_label})"))
+            .legend(Legend::default())
+            .show(ui, |plot_ui| {
+                let ma = if self.settings.show_smoothed {
+                    Some(self.settings.ma_window)
+                } else {
+                    None
+                };
+                for l in training_volume_line(
+                    entries,
+                    self.settings.start_date,
+                    self.settings.end_date,
+                    self.settings.x_axis,
+                    self.settings.y_axis,
+                    self.settings.weight_unit,
+                    ma,
+                    self.settings.smoothing_method,
+                ) {
+                    plot_ui.line(l);
+                }
+            });
+
+        let (bars, body_parts) =
+            body_part_distribution(entries, self.settings.start_date, self.settings.end_date);
+        let pie = body_part_pie(entries, self.settings.start_date, self.settings.end_date);
+        let bp_for_axis = body_parts.clone();
+        ui.heading("Sets per Body Part");
+        Plot::new("overall_sets_per_body_part")
+            .width(size.x)
+            .height(size.y)
+            .x_axis_formatter(move |mark, _, _| {
+                bp_for_axis
+                    .get(mark.value as usize)
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .x_axis_label("Body Part")
+            .y_axis_label("Sets")
+            .legend(Legend::default())
+            .show(ui, |plot_ui| {
+                plot_ui.bar_chart(bars);
+            });
+        ui.heading("Body Part Distribution");
+        let _ = draw_pie_chart(ui, &pie, size);
+    }
+
     fn sync_settings_from_app(&mut self) {
         self.settings.selected_exercises = self.selected_exercises.clone();
         self.settings.table_filter = self.table_filter.clone();
@@ -2787,6 +2868,12 @@ impl App for MyApp {
                         self.settings.show_stats_window = self.show_stats_window;
                         self.settings_dirty = true;
                     }
+                    if ui.button("Overall Analysis").clicked() {
+                        self.show_overall_analysis_window = !self.show_overall_analysis_window;
+                        self.settings.show_overall_analysis_window =
+                            self.show_overall_analysis_window;
+                        self.settings_dirty = true;
+                    }
                     if ui.button("Exercise Stats").clicked() {
                         self.show_exercise_stats = !self.show_exercise_stats;
                         self.settings.show_exercise_stats = self.show_exercise_stats;
@@ -3122,6 +3209,23 @@ impl App for MyApp {
             self.show_stats_window = open;
             if self.settings.show_stats_window != self.show_stats_window {
                 self.settings.show_stats_window = self.show_stats_window;
+                self.settings_dirty = true;
+            }
+        }
+
+        if self.show_overall_analysis_window {
+            let filtered = self.filtered_entries();
+            let mut open = self.show_overall_analysis_window;
+            egui::Window::new("Overall Analysis")
+                .open(&mut open)
+                .vscroll(true)
+                .show(ctx, |ui| {
+                    let size = egui::vec2(self.settings.plot_width, self.settings.plot_height);
+                    self.draw_overall_analysis(ui, &filtered, size);
+                });
+            self.show_overall_analysis_window = open;
+            if self.settings.show_overall_analysis_window != self.show_overall_analysis_window {
+                self.settings.show_overall_analysis_window = self.show_overall_analysis_window;
                 self.settings_dirty = true;
             }
         }
@@ -4755,6 +4859,7 @@ mod tests {
         s.stats_panel_width = 150.0;
         s.show_compare_window = true;
         s.show_stats_window = true;
+        s.show_overall_analysis_window = true;
         s.show_mapping = true;
         s.body_part_volume_aggregation = VolumeAggregation::Monthly;
         s.auto_load_last = false;
