@@ -3714,6 +3714,28 @@ impl App for MyApp {
                             }
                         });
                     }
+                    ui.horizontal(|ui| {
+                        if ui.button("Export Mapping").clicked() {
+                            if let Some(path) =
+                                FileDialog::new().add_filter("JSON", &["json"]).save_file()
+                            {
+                                if let Err(e) = exercise_mapping::export_all(&path) {
+                                    log::error!("Failed to export mapping: {e}");
+                                }
+                            }
+                        }
+                        if ui.button("Import Mapping").clicked() {
+                            if let Some(path) =
+                                FileDialog::new().add_filter("JSON", &["json"]).pick_file()
+                            {
+                                if let Err(e) = exercise_mapping::import_all(&path) {
+                                    log::error!("Failed to import mapping: {e}");
+                                } else {
+                                    self.mapping_dirty = true;
+                                }
+                            }
+                        }
+                    });
                     if ui.button("Open Config Directory").clicked() {
                         if let Some(dir) = dirs::config_dir() {
                             let _ = open::that(dir);
