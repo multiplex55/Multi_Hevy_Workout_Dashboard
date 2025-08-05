@@ -1249,9 +1249,18 @@ impl MyApp {
                             ) {
                                 if lw.max_point.is_some() {
                                     if let Some(ex) = sel.get(ex_idx) {
+                                        let label = if matches!(
+                                            self.selected_exercises,
+                                            ExerciseSelection::All
+                                        ) {
+                                            body_parts::body_part_for(ex)
+                                                .unwrap_or_else(|| ex.clone())
+                                        } else {
+                                            ex.clone()
+                                        };
                                         for p in &lw.points {
                                             all_points.push(*p);
-                                            point_exercises.push(ex.clone());
+                                            point_exercises.push(label.clone());
                                         }
                                     }
                                     plot_ui.line(lw.line);
@@ -1365,6 +1374,15 @@ impl MyApp {
                                         XAxis::WorkoutIndex => format!("{}", p[0] as i64),
                                     };
                                     ui.label(format!("{x_text}: {:.2}", p[1]));
+                                    let labels: BTreeSet<String> = all_points
+                                        .iter()
+                                        .zip(&point_exercises)
+                                        .filter(|(pt, _)| **pt == p)
+                                        .map(|(_, l)| l.clone())
+                                        .collect();
+                                    if !labels.is_empty() {
+                                        ui.label(labels.into_iter().collect::<Vec<_>>().join(", "));
+                                    }
                                     if let Some(rt) = record_tip.clone() {
                                         ui.label(rt);
                                     }
@@ -1428,9 +1446,18 @@ impl MyApp {
                             ) {
                                 if lr.max_point.is_some() {
                                     if let Some(ex) = sel.get(ex_idx) {
+                                        let label = if matches!(
+                                            self.selected_exercises,
+                                            ExerciseSelection::All
+                                        ) {
+                                            body_parts::body_part_for(ex)
+                                                .unwrap_or_else(|| ex.clone())
+                                        } else {
+                                            ex.clone()
+                                        };
                                         for p in &lr.points {
                                             all_points.push(*p);
-                                            point_exercises.push(ex.clone());
+                                            point_exercises.push(label.clone());
                                         }
                                     }
                                     plot_ui.line(lr.line);
@@ -1524,6 +1551,15 @@ impl MyApp {
                                         XAxis::WorkoutIndex => format!("{}", p[0] as i64),
                                     };
                                     ui.label(format!("{x_text}: {:.2}", p[1]));
+                                    let labels: BTreeSet<String> = all_points
+                                        .iter()
+                                        .zip(&point_exercises)
+                                        .filter(|(pt, _)| **pt == p)
+                                        .map(|(_, l)| l.clone())
+                                        .collect();
+                                    if !labels.is_empty() {
+                                        ui.label(labels.into_iter().collect::<Vec<_>>().join(", "));
+                                    }
                                     if let Some(rt) = record_tip.clone() {
                                         ui.label(rt);
                                     }
