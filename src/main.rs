@@ -1384,7 +1384,11 @@ impl MyApp {
                                         .map(|(_, l)| l.clone())
                                         .collect();
                                     if !labels.is_empty() {
-                                        ui.label(labels.into_iter().collect::<Vec<_>>().join(", "));
+                                        if labels.len() == 1 {
+                                            ui.label(labels.into_iter().next().unwrap());
+                                        } else {
+                                            ui.label(format!("{} exercises", labels.len()));
+                                        }
                                     }
                                     if let Some(rt) = record_tip.clone() {
                                         ui.label(rt);
@@ -1561,7 +1565,11 @@ impl MyApp {
                                         .map(|(_, l)| l.clone())
                                         .collect();
                                     if !labels.is_empty() {
-                                        ui.label(labels.into_iter().collect::<Vec<_>>().join(", "));
+                                        if labels.len() == 1 {
+                                            ui.label(labels.into_iter().next().unwrap());
+                                        } else {
+                                            ui.label(format!("{} exercises", labels.len()));
+                                        }
                                     }
                                     if let Some(rt) = record_tip.clone() {
                                         ui.label(rt);
@@ -3885,18 +3893,20 @@ impl App for MyApp {
                                 }
                             });
                         ui.label("Secondary:");
-                        for m in &muscles {
-                            let mut sel = self.mapping_entry.secondary.contains(m);
-                            if ui.checkbox(&mut sel, m).changed() {
-                                if sel {
-                                    if !self.mapping_entry.secondary.contains(m) {
-                                        self.mapping_entry.secondary.push(m.clone());
+                        ui.columns(3, |columns| {
+                            for (i, m) in muscles.iter().enumerate() {
+                                let mut sel = self.mapping_entry.secondary.contains(m);
+                                if columns[i % 3].checkbox(&mut sel, m).changed() {
+                                    if sel {
+                                        if !self.mapping_entry.secondary.contains(m) {
+                                            self.mapping_entry.secondary.push(m.clone());
+                                        }
+                                    } else {
+                                        self.mapping_entry.secondary.retain(|s| s != m);
                                     }
-                                } else {
-                                    self.mapping_entry.secondary.retain(|s| s != m);
                                 }
                             }
-                        }
+                        });
                         ui.horizontal(|ui| {
                             ui.label("Category:");
                             ui.text_edit_singleline(&mut self.mapping_entry.category);
@@ -5156,6 +5166,7 @@ impl App for MyApp {
         if self.mapping_dirty {
             exercise_mapping::save();
             exercise_mapping::load();
+            ctx.request_repaint();
             self.mapping_dirty = false;
         }
     }
