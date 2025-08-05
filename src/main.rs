@@ -2792,9 +2792,10 @@ impl App for MyApp {
         }
 
         if self.show_exercise_panel {
-            let panel = egui::SidePanel::right("exercise_panel")
-                .resizable(true)
+            let mut open = self.show_exercise_panel;
+            let panel = egui::Window::new("Exercise Panel")
                 .default_width(self.settings.exercise_panel_width)
+                .open(&mut open)
                 .show(ctx, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         if !self.workouts.is_empty() {
@@ -3048,9 +3049,16 @@ impl App for MyApp {
                         }
                     });
                 });
-            let new_width = panel.response.rect.width();
-            if (self.settings.exercise_panel_width - new_width).abs() > f32::EPSILON {
-                self.settings.exercise_panel_width = new_width;
+            self.show_exercise_panel = open;
+            if let Some(panel) = panel {
+                let new_width = panel.response.rect.width();
+                if (self.settings.exercise_panel_width - new_width).abs() > f32::EPSILON {
+                    self.settings.exercise_panel_width = new_width;
+                    self.settings_dirty = true;
+                }
+            }
+            if self.settings.show_exercise_panel != self.show_exercise_panel {
+                self.settings.show_exercise_panel = self.show_exercise_panel;
                 self.settings_dirty = true;
             }
         }
