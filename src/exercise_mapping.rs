@@ -11,6 +11,7 @@ use dirs_next as dirs;
 use crate::body_parts;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct MuscleMapping {
     pub primary: String,
     pub secondary: Vec<String>,
@@ -122,4 +123,32 @@ pub fn merge_files<P: AsRef<Path>>(paths: &[P]) -> io::Result<()> {
     }
     *MAPPINGS.lock().unwrap() = map;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn merge_file_with_missing_fields_defaults() {
+        let mut file = NamedTempFile::new().unwrap();
+        // Only provide the primary field to ensure defaults are filled in for the rest.
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({"Custom Exercise": {"primary": "Chest"}}).to_string()
+        )
+        .unwrap();
+
+        merge_files(&[file.path()]).expect("merge should succeed");
+
+        let mapping = get("Custom Exercise").expect("mapping should exist");
+        assert_eq!(mapping.primary, "Chest");
+        assert!(mapping.secondary.is_empty());
+        assert!(mapping.category.is_empty());
+
+        remove("Custom Exercise");
+    }
 }
