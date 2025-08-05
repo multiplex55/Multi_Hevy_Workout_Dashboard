@@ -2282,6 +2282,44 @@ fn nearest_point(pointer: egui_plot::PlotPoint, points: &[[f64; 2]]) -> Option<[
     })
 }
 
+fn set_secondary(entry: &mut exercise_mapping::MuscleMapping, muscle: &str, selected: bool) {
+    if selected {
+        if !entry.secondary.contains(&muscle.to_string()) {
+            entry.secondary.push(muscle.to_string());
+        }
+    } else {
+        entry.secondary.retain(|s| s != muscle);
+    }
+}
+
+fn render_secondary_checkboxes_with<F: FnMut(usize, bool)>(
+    ui: &mut egui::Ui,
+    muscles: &[String],
+    entry: &mut exercise_mapping::MuscleMapping,
+    mut record: F,
+) {
+    ui.label("Secondary:");
+    ui.columns(3, |columns| {
+        #[cfg(test)]
+        assert_eq!(columns.len(), 3);
+        for (i, m) in muscles.iter().enumerate() {
+            let mut sel = entry.secondary.contains(m);
+            if columns[i % 3].checkbox(&mut sel, m).changed() {
+                set_secondary(entry, m, sel);
+            }
+            record(i % 3, sel);
+        }
+    });
+}
+
+fn render_secondary_checkboxes(
+    ui: &mut egui::Ui,
+    muscles: &[String],
+    entry: &mut exercise_mapping::MuscleMapping,
+) {
+    render_secondary_checkboxes_with(ui, muscles, entry, |_, _| {});
+}
+
 impl App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         // Handle screenshot results
@@ -3892,21 +3930,7 @@ impl App for MyApp {
                                     );
                                 }
                             });
-                        ui.label("Secondary:");
-                        ui.columns(3, |columns| {
-                            for (i, m) in muscles.iter().enumerate() {
-                                let mut sel = self.mapping_entry.secondary.contains(m);
-                                if columns[i % 3].checkbox(&mut sel, m).changed() {
-                                    if sel {
-                                        if !self.mapping_entry.secondary.contains(m) {
-                                            self.mapping_entry.secondary.push(m.clone());
-                                        }
-                                    } else {
-                                        self.mapping_entry.secondary.retain(|s| s != m);
-                                    }
-                                }
-                            }
-                        });
+                        render_secondary_checkboxes(ui, &muscles, &mut self.mapping_entry);
                         ui.horizontal(|ui| {
                             ui.label("Category:");
                             ui.text_edit_singleline(&mut self.mapping_entry.category);
@@ -5368,6 +5392,56 @@ mod tests {
                 env::remove_var("XDG_CONFIG_HOME");
             }
         }
+    }
+
+    #[test]
+    fn secondary_checkbox_columns_and_toggle() {
+        let ctx = egui::Context::default();
+        let muscles: Vec<String> = crate::body_parts::primary_muscle_groups()
+            .into_iter()
+            .take(6)
+            .collect();
+        let mut entry = exercise_mapping::MuscleMapping::default();
+
+        let mut cols = Vec::new();
+        let mut states = Vec::new();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::Window::new("Mapping").show(ctx, |ui| {
+                render_secondary_checkboxes_with(ui, &muscles, &mut entry, |col, sel| {
+                    cols.push(col);
+                    states.push(sel);
+                });
+            });
+        });
+        assert_eq!(cols, vec![0, 1, 2, 0, 1, 2]);
+        assert!(states.iter().all(|&s| !s));
+
+        set_secondary(&mut entry, &muscles[0], true);
+        assert!(entry.secondary.contains(&muscles[0]));
+
+        let mut states_on = Vec::new();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::Window::new("Mapping").show(ctx, |ui| {
+                render_secondary_checkboxes_with(ui, &muscles, &mut entry, |_, sel| {
+                    states_on.push(sel);
+                });
+            });
+        });
+        assert!(states_on[0]);
+        assert!(states_on.iter().skip(1).all(|&s| !s));
+
+        set_secondary(&mut entry, &muscles[0], false);
+        assert!(!entry.secondary.contains(&muscles[0]));
+
+        let mut states_off = Vec::new();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::Window::new("Mapping").show(ctx, |ui| {
+                render_secondary_checkboxes_with(ui, &muscles, &mut entry, |_, sel| {
+                    states_off.push(sel);
+                });
+            });
+        });
+        assert!(states_off.iter().all(|&s| !s));
     }
 
     #[test]
