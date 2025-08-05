@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 use std::sync::Mutex;
+use std::time::SystemTime;
 
 use dirs_next as dirs;
 
@@ -96,15 +97,26 @@ pub fn import_all<P: AsRef<Path>>(path: P) -> io::Result<()> {
 }
 
 pub fn merge_files<P: AsRef<Path>>(paths: &[P]) -> io::Result<()> {
-    let mut map: HashMap<String, MuscleMapping> = HashMap::new();
-    for p in paths {
-        let data = std::fs::read_to_string(p.as_ref())?;
+    let mut map: HashMap<String, MuscleMapping> = all();
+    let mut files: Vec<&Path> = paths.iter().map(|p| p.as_ref()).collect();
+    files.sort_by(|a, b| {
+        let ma = std::fs::metadata(a)
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::UNIX_EPOCH);
+        let mb = std::fs::metadata(b)
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::UNIX_EPOCH);
+        mb.cmp(&ma)
+    });
+    for p in files {
+        let data = std::fs::read_to_string(p)?;
         let part: HashMap<String, MuscleMapping> =
             serde_json::from_str(&data).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         for (k, v) in part {
             map.insert(k, v);
         }
     }
+    map = map.into_iter().collect();
     for ex in body_parts::EXERCISES.keys() {
         map.entry((*ex).to_string()).or_default();
     }
