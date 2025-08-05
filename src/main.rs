@@ -2382,34 +2382,37 @@ impl App for MyApp {
                         self.show_settings = true;
                         ui.close_menu();
                     }
-                    if ui.button("Raw Entries").clicked() {
-                        self.show_entries = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Exercise Stats").clicked() {
-                        self.show_exercise_stats = !self.show_exercise_stats;
-                        self.settings.show_exercise_stats = self.show_exercise_stats;
-                        self.settings_dirty = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Personal Records").clicked() {
-                        self.show_pr_window = !self.show_pr_window;
-                        self.settings.show_pr_window = self.show_pr_window;
-                        self.settings_dirty = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Exercise Panel").clicked() {
-                        self.show_exercise_panel = !self.show_exercise_panel;
-                        self.settings.show_exercise_panel = self.show_exercise_panel;
-                        self.settings_dirty = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Muscle Mapping").clicked() {
-                        self.show_mapping = !self.show_mapping;
-                        self.settings.show_mapping = self.show_mapping;
-                        self.settings_dirty = true;
-                        ui.close_menu();
-                    }
+                    ui.menu_button("Panels", |ui| {
+                        ui.checkbox(&mut self.show_entries, "Raw Entries");
+                        if ui
+                            .checkbox(&mut self.show_exercise_stats, "Exercise Stats")
+                            .changed()
+                        {
+                            self.settings.show_exercise_stats = self.show_exercise_stats;
+                            self.settings_dirty = true;
+                        }
+                        if ui
+                            .checkbox(&mut self.show_pr_window, "Personal Records")
+                            .changed()
+                        {
+                            self.settings.show_pr_window = self.show_pr_window;
+                            self.settings_dirty = true;
+                        }
+                        if ui
+                            .checkbox(&mut self.show_exercise_panel, "Exercise Panel")
+                            .changed()
+                        {
+                            self.settings.show_exercise_panel = self.show_exercise_panel;
+                            self.settings_dirty = true;
+                        }
+                        if ui
+                            .checkbox(&mut self.show_mapping, "Muscle Mapping")
+                            .changed()
+                        {
+                            self.settings.show_mapping = self.show_mapping;
+                            self.settings_dirty = true;
+                        }
+                    });
                     if ui.button("Usage Tips").clicked() {
                         self.show_about = true;
                         ui.close_menu();
