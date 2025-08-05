@@ -617,6 +617,8 @@ struct MyApp {
     mapping_exercises: Vec<String>,
     mapping_dirty: bool,
     mapping_entry: exercise_mapping::MuscleMapping,
+    mapping_toast_start: Option<Instant>,
+    mapping_message: Option<String>,
     pr_toast_start: Option<Instant>,
     pr_message: Option<String>,
     loading: bool,
@@ -676,6 +678,8 @@ impl Default for MyApp {
             mapping_exercises: Vec::new(),
             mapping_dirty: false,
             mapping_entry: exercise_mapping::MuscleMapping::default(),
+            mapping_toast_start: None,
+            mapping_message: None,
             pr_toast_start: None,
             pr_message: None,
             loading: false,
@@ -3858,14 +3862,16 @@ impl App for MyApp {
                             {
                                 if let Err(e) = exercise_mapping::merge_files(&paths) {
                                     log::error!("Failed to merge mappings: {e}");
-                                    self.pr_message =
+                                    self.mapping_message =
                                         Some(format!("Failed to merge mappings: {e}"));
-                                    self.pr_toast_start = Some(Instant::now());
+                                    self.mapping_toast_start = Some(Instant::now());
                                 } else {
                                     log::info!("Merged {} mapping files", paths.len());
-                                    self.pr_message = Some("Mappings merged".to_string());
-                                    self.pr_toast_start = Some(Instant::now());
+                                    self.mapping_message = Some("Mappings merged".to_string());
+                                    self.mapping_toast_start = Some(Instant::now());
+                                    self.mapping_exercises.clear();
                                     self.mapping_dirty = true;
+                                    ctx.request_repaint();
                                 }
                             }
                         }
@@ -5046,12 +5052,28 @@ impl App for MyApp {
             }
         }
 
+        if let Some(start) = self.mapping_toast_start {
+            if start.elapsed() < Duration::from_secs(3) {
+                if let Some(ref msg) = self.mapping_message {
+                    egui::Area::new(egui::Id::new("mapping_toast"))
+                        .anchor(egui::Align2::RIGHT_BOTTOM, [-10.0, -10.0])
+                        .show(ctx, |ui| {
+                            ui.label(msg);
+                        });
+                }
+            } else {
+                self.mapping_toast_start = None;
+                self.mapping_message = None;
+            }
+        }
+
         if self.settings_dirty {
             self.settings.save();
             self.settings_dirty = false;
         }
         if self.mapping_dirty {
             exercise_mapping::save();
+            exercise_mapping::load();
             self.mapping_dirty = false;
         }
     }
