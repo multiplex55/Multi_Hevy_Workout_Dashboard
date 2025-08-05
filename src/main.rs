@@ -363,6 +363,8 @@ struct Settings {
     plot_width: f32,
     #[serde(default = "default_plot_height")]
     plot_height: f32,
+    #[serde(default)]
+    full_width_plots: bool,
     #[serde(default = "default_grid_cols")]
     grid_cols: usize,
     #[serde(default = "default_grid_rows")]
@@ -514,6 +516,7 @@ impl Default for Settings {
             ma_window: 5,
             plot_width: 400.0,
             plot_height: 200.0,
+            full_width_plots: false,
             grid_cols: default_grid_cols(),
             grid_rows: default_grid_rows(),
             volume_aggregation: VolumeAggregation::Weekly,
@@ -3068,12 +3071,17 @@ impl App for MyApp {
                 if sel.is_empty() {
                     ui.label("No exercises available");
                 } else {
+                    let width = if self.settings.full_width_plots {
+                        ui.available_width()
+                    } else {
+                        self.settings.plot_width
+                    };
                     let plot_resp = self.draw_plot(
                         ctx,
                         ui,
                         &filtered,
                         &sel,
-                        egui::vec2(self.settings.plot_width, self.settings.plot_height),
+                        egui::vec2(width, self.settings.plot_height),
                     );
                     if ui.button("Save Plot").clicked() {
                         self.capture_rect = Some(plot_resp.response.rect);
@@ -3366,12 +3374,17 @@ impl App for MyApp {
                     if sel.is_empty() {
                         ui.label("No exercises available");
                     } else {
+                        let width = if self.settings.full_width_plots {
+                            ui.available_width()
+                        } else {
+                            self.settings.plot_width
+                        };
                         let plot_resp = self.draw_plot(
                             ctx,
                             ui,
                             &filtered,
                             &sel,
-                            egui::vec2(self.settings.plot_width, self.settings.plot_height),
+                            egui::vec2(width, self.settings.plot_height),
                         );
                         if ui.button("Save Plot").clicked() {
                             self.capture_rect = Some(plot_resp.response.rect);
@@ -3480,7 +3493,12 @@ impl App for MyApp {
                 .open(&mut open)
                 .vscroll(true)
                 .show(ctx, |ui| {
-                    let size = egui::vec2(self.settings.plot_width, self.settings.plot_height);
+                    let width = if self.settings.full_width_plots {
+                        ui.available_width()
+                    } else {
+                        self.settings.plot_width
+                    };
+                    let size = egui::vec2(width, self.settings.plot_height);
                     self.draw_overall_analysis(ui, &filtered, size);
                 });
             self.show_overall_analysis_window = open;
@@ -3500,10 +3518,15 @@ impl App for MyApp {
                     if entries.is_empty() {
                         ui.label("No entries");
                     } else {
+                        let width = if self.settings.full_width_plots {
+                            ui.available_width()
+                        } else {
+                            self.settings.plot_width
+                        };
                         if self.settings.show_rep_histogram {
                             ui.heading("Rep Distribution");
                             Plot::new("rep_hist_window")
-                                .width(self.settings.plot_width)
+                                .width(width)
                                 .height(self.settings.plot_height)
                                 .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
                                 .x_axis_label("Reps")
@@ -3528,7 +3551,7 @@ impl App for MyApp {
                             };
                             ui.heading("Weight Distribution");
                             Plot::new("weight_hist_window")
-                                .width(self.settings.plot_width)
+                                .width(width)
                                 .height(self.settings.plot_height)
                                 .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
                                 .x_axis_label(format!("Weight ({unit_label})"))
@@ -3549,7 +3572,7 @@ impl App for MyApp {
                         if self.settings.show_volume_histogram {
                             ui.heading("Volume Distribution");
                             Plot::new("volume_hist_window")
-                                .width(self.settings.plot_width)
+                                .width(width)
                                 .height(self.settings.plot_height)
                                 .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
                                 .x_axis_label("Volume")
@@ -3570,7 +3593,7 @@ impl App for MyApp {
                         if self.settings.show_rpe_histogram {
                             ui.heading("RPE Distribution");
                             Plot::new("rpe_hist_window")
-                                .width(self.settings.plot_width)
+                                .width(width)
                                 .height(self.settings.plot_height)
                                 .x_axis_formatter(|mark, _, _| format!("{:.0}", mark.value))
                                 .x_axis_label("RPE")
@@ -4232,6 +4255,18 @@ impl App for MyApp {
                                                 }
                                             }
                                         });
+                                        ui.end_row();
+
+                                        if ui
+                                            .checkbox(
+                                                &mut self.settings.full_width_plots,
+                                                "Use full panel width",
+                                            )
+                                            .changed()
+                                        {
+                                            self.settings_dirty = true;
+                                        }
+                                        ui.label("");
                                         ui.end_row();
 
                                         ui.horizontal(|ui| {
