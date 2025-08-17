@@ -3979,6 +3979,23 @@ impl App for MyApp {
                                 }
                             }
                         }
+                        if ui.button("Export Exercise List").clicked() {
+                            let list = unique_exercises(&self.workouts, None, None);
+                            if let Some(path) =
+                                FileDialog::new().add_filter("Text", &["txt"]).save_file()
+                            {
+                                let content = list.join("\n");
+                                if let Err(e) = std::fs::write(&path, content) {
+                                    log::error!("Failed to export exercise list: {e}");
+                                    self.mapping_message =
+                                        Some(format!("Failed to export exercise list: {e}"));
+                                } else {
+                                    self.mapping_message =
+                                        Some("Exercise list exported".to_string());
+                                }
+                                self.mapping_toast_start = Some(Instant::now());
+                            }
+                        }
                     });
                     if ui.button("Open Config Directory").clicked() {
                         if let Some(dir) = dirs::config_dir() {
