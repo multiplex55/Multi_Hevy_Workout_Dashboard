@@ -1,6 +1,7 @@
 // Module for analyzing workout data
 use crate::WorkoutEntry;
 use crate::body_parts::body_part_for;
+use crate::exercise_mapping;
 use crate::exercise_utils::normalize_exercise;
 use crate::plotting::OneRmFormula;
 use chrono::{Datelike, NaiveDate};
@@ -738,6 +739,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_sets_by_body_part() {
+        exercise_mapping::load();
         let entries = sample_entries();
         let map = aggregate_sets_by_body_part(&entries, None, None);
         assert_eq!(map.get("Quads"), Some(&2));
@@ -747,6 +749,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_sets_by_body_part_range() {
+        exercise_mapping::load();
         let entries = sample_entries();
         let start = NaiveDate::parse_from_str("2024-01-03", "%Y-%m-%d").ok();
         let map = aggregate_sets_by_body_part(&entries, start, None);

@@ -2463,16 +2463,13 @@ impl App for MyApp {
                         self.show_about = true;
                         ui.close_menu();
                     }
-                    if ui.button("Reprocess Workouts").clicked() {
-                        let updated = body_parts::update_mappings_from_workouts(&self.workouts);
-                        if updated > 0 {
-                            exercise_mapping::save();
-                            self.stats = compute_stats(
-                                &self.workouts,
-                                self.settings.start_date,
-                                self.settings.end_date,
-                            );
-                        }
+                    if ui.button("Reload Mappings").clicked() {
+                        exercise_mapping::load();
+                        self.stats = compute_stats(
+                            &self.workouts,
+                            self.settings.start_date,
+                            self.settings.end_date,
+                        );
                         ui.close_menu();
                     }
                     ui.menu_button("Export", |ui| {
@@ -5232,6 +5229,7 @@ fn main() -> eframe::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::exercise_mapping;
     use once_cell::sync::Lazy;
     use std::sync::Mutex;
 
@@ -5534,6 +5532,7 @@ Week 1,\"01 Jan 2024, 10:10\",,desc,Bench Press,,,2,working,135,5,,,\n";
 
     #[test]
     fn exercise_type_filter() {
+        exercise_mapping::load();
         let entries = vec![
             WorkoutEntry {
                 date: "2024-01-01".into(),
@@ -5562,6 +5561,7 @@ Week 1,\"01 Jan 2024, 10:10\",,desc,Bench Press,,,2,working,135,5,,,\n";
 
     #[test]
     fn difficulty_filter() {
+        exercise_mapping::load();
         let entries = vec![
             WorkoutEntry {
                 date: "2024-01-01".into(),
@@ -5590,6 +5590,7 @@ Week 1,\"01 Jan 2024, 10:10\",,desc,Bench Press,,,2,working,135,5,,,\n";
 
     #[test]
     fn equipment_filter() {
+        exercise_mapping::load();
         let entries = vec![
             WorkoutEntry {
                 date: "2024-01-01".into(),

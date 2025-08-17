@@ -4,6 +4,7 @@ use egui::{Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, Ui, Vec2};
 use egui_plot::{Bar, BarChart, HLine, Line, PlotPoints, PlotUi, Points, VLine};
 
 use crate::body_parts::body_part_for;
+use crate::exercise_mapping;
 use crate::{
     WeightUnit, WorkoutEntry,
     analysis::{
@@ -1797,6 +1798,7 @@ mod tests {
 
     #[test]
     fn test_body_part_volume_trend() {
+        exercise_mapping::load();
         let lines = body_part_volume_trend(
             &sample_entries(),
             None,
@@ -1895,7 +1897,7 @@ mod tests {
     fn test_body_part_distribution_counts() {
         use crate::analysis::aggregate_sets_by_body_part;
         use std::collections::HashMap;
-
+        exercise_mapping::load();
         let entries = sample_entries();
         let (chart, _) = body_part_distribution(&entries, None, None);
         let bounds = PlotItem::bounds(&chart);
@@ -1909,6 +1911,7 @@ mod tests {
 
     #[test]
     fn test_body_part_pie_counts() {
+        exercise_mapping::load();
         let entries = sample_entries();
         let pie = body_part_pie(&entries, None, None);
         let mut map = std::collections::HashMap::new();
